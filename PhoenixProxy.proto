@@ -1,0 +1,31 @@
+message QueryRequest {
+	required int32 call_id = 1;
+	required string query = 2;
+}
+
+message ColumnMapping {
+	enum Type {
+		INTEGER = 1;
+		VARCHAR = 2;
+		BINARY = 3;
+
+	}
+	required string name = 1;
+	required Type type = 2;
+}
+
+message Row {
+	repeated bytes bytes = 1;
+}
+
+message QueryResponse {
+	required int32 call_id = 1;
+	repeated ColumnMapping mapping = 2;
+	repeated Row rows = 3;
+
+}
+
+
+service PhoenixProxy {
+	rpc query (QueryRequest) returns (QueryResponse);
+}
