@@ -14,6 +14,10 @@ message ColumnMapping {
 	required Type type = 2;
 }
 
+message QueryException {
+	required string message = 1;
+}
+
 message Row {
 	repeated bytes bytes = 1;
 }
@@ -22,6 +26,7 @@ message QueryResponse {
 	required int32 call_id = 1;
 	repeated ColumnMapping mapping = 2;
 	repeated Row rows = 3;
+	optional QueryException exception = 4;
 
 }
 
