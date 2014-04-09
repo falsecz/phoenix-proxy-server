@@ -1,3 +1,9 @@
+option java_package = "com.socialbakers.phoenix.proxy";
+option java_outer_classname = "PhoenixProxyProtos";
+option java_generic_services = true;
+option java_generate_equals_and_hash = true;
+option optimize_for = SPEED;
+
 message QueryRequest {
 	required int32 call_id = 1;
 	required string query = 2;
