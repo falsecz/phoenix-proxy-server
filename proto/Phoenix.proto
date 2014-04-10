@@ -5,8 +5,14 @@ option java_generate_equals_and_hash = true;
 option optimize_for = SPEED;
 
 message QueryRequest {
+	enum Type {
+		QUERY = 1;
+		UPDATE = 2;
+	}
+
 	required int32 call_id = 1;
 	required string query = 2;
+	required Type type = 3;
 }
 
 message ColumnMapping {
@@ -14,12 +20,13 @@ message ColumnMapping {
 		INTEGER = 1;
 		VARCHAR = 2;
 		BINARY = 3;
-                DOUBLE = 4;
-                FLOAT = 5;
-                BIGINT = 6;
-                BOOLEAN = 7;
-                TIMESTAMP = 8;
-                DATE = 10;
+        DOUBLE = 4;
+        FLOAT = 5;
+        BIGINT = 6;
+        BOOLEAN = 7;
+        TIMESTAMP = 8;
+        DATE = 10;
+		TINYINT = 11;
 	}
 	required string name = 1;
 	required Type type = 2;
