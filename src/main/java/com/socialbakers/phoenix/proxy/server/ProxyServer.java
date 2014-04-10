@@ -106,12 +106,12 @@ public class ProxyServer {
     }
 
     public ProxyServer(InetAddress addr, int port, String zooKeeper) throws IOException, SQLException {
-	this.linkedBlockingDeque = new ArrayBlockingQueue<>(20000);
+	this.linkedBlockingDeque = new ArrayBlockingQueue<Runnable>(20000);
 	//this.executor = new ThreadPoolExecutor(256, 256, 30, TimeUnit.MINUTES, linkedBlockingDeque);
 	this.addr = addr;
 	this.port = port;
 	this.zooKeeper = zooKeeper;
-	outgoingData = new HashMap<>();
+	outgoingData = new HashMap<SocketChannel, List<byte[]>>();
 	incomingData = new HashMap<SocketChannel, IncomingData>();
 	getConnection();
 	startServer();
@@ -330,7 +330,7 @@ public class ProxyServer {
 		b = ByteBuffer.allocate(Long.SIZE / 8)
 			.putLong(d.getTime());
 	    } else if (type == Types.TINYINT) {
-		b = ByteBuffer.allocate(1).put((byte) o);
+		b = ByteBuffer.allocate(1).put((Byte) o);
 	    } else if (type == Types.BOOLEAN) {
 		byte by = 0;
 		if ((Boolean) o == true) {
