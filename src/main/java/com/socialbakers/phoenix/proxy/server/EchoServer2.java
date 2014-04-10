@@ -45,11 +45,51 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 public class EchoServer2 {
+
     private InetAddress addr;
     private int port;
     private Selector selector;
     private Map<SocketChannel, List<byte[]>> outgoingData;
-    private Map<SocketChannel, IncomingData> incomingData; 
+    private Map<SocketChannel, IncomingData> incomingData;
+
+    private Connection conn = null;
+    private int connectionCounter = 0;
+    private String zooKeeper = "hadoops-master.us-w2.aws.ccl";
+
+    private BlockingQueue<Runnable> linkedBlockingDeque = new ArrayBlockingQueue<Runnable>(20000);
+    private ExecutorService executor = new ThreadPoolExecutor(256, 256, 30, TimeUnit.MINUTES, linkedBlockingDeque);
+
+    private Connection getConnection() throws SQLException {
+        if (conn != null) {
+            connectionCounter++;
+
+            //create new connection
+            if (connectionCounter == 500) {
+                new Thread(new Runnable() {
+                    @Override
+                    public void run() {
+                        try {
+                            System.out.println("creating new connection");
+                            Connection c = DriverManager.getConnection("jdbc:phoenix:" + zooKeeper);
+                            System.out.println("new connection created");
+
+                            conn = c;
+                            connectionCounter = 0;
+                        } catch (SQLException ex) {
+                            Logger.getLogger(RequestProcessor.class.getName()).log(Level.SEVERE, null, ex);
+                        }
+                    }
+                }).start();
+            }
+
+            return conn;
+        }
+
+        DriverManager.registerDriver(new PhoenixDriver());
+        conn = DriverManager.getConnection("jdbc:phoenix:" + zooKeeper);
+        return conn;
+    }
+
     
     private class IncomingData {
         
@@ -84,11 +124,13 @@ public class EchoServer2 {
         
     }        
             
-    public EchoServer2(InetAddress addr, int port) throws IOException {
+    public EchoServer2(InetAddress addr, int port, String zooKeeper) throws IOException, SQLException {
         this.addr = addr;
         this.port = port;
+        this.zooKeeper = zooKeeper;
         outgoingData = new HashMap<SocketChannel, List<byte[]>>();
         incomingData = new HashMap<SocketChannel, IncomingData>();
+        getConnection();
         startServer();
     }
 
@@ -204,52 +246,16 @@ public class EchoServer2 {
         
         private SelectionKey key;
         private IncomingData message;
-                
-        private Connection conn = null;
-	private int connectionCounter = 0;
-	private String zooKeeper = "hadoops-master.us-w2.aws.ccl";
- 
-	private BlockingQueue<Runnable> linkedBlockingDeque = new ArrayBlockingQueue<Runnable>(20000);
-	private ExecutorService executor = new ThreadPoolExecutor(256, 256, 30, TimeUnit.MINUTES, linkedBlockingDeque);
         
         private RequestProcessor(SelectionKey key, IncomingData message) {
             this.key = key;
             this.message = message;
         }
- 
-        private Connection getConnection() throws SQLException {
-            if (conn != null) {
-                connectionCounter++;
-
-                //create new connection
-                if (connectionCounter == 500) {
-                    new Thread(new Runnable() {
-                        @Override
-                        public void run() {
-                            try {
-                                System.out.println("creating new connection");
-                                Connection c = DriverManager.getConnection("jdbc:phoenix:" + zooKeeper);
-                                System.out.println("new connection created");
-
-                                conn = c;
-                                connectionCounter = 0;
-                            } catch (SQLException ex) {
-                                Logger.getLogger(RequestProcessor.class.getName()).log(Level.SEVERE, null, ex);
-                            }
-                        }
-                    }).start();
-                }
-
-                return conn;
-            }
-
-            DriverManager.registerDriver(new PhoenixDriver());
-            conn = DriverManager.getConnection("jdbc:phoenix:" + zooKeeper);
-            return conn;
-        }
- 
+                
         public PhoenixProxyProtos.QueryResponse sendQuery(String query, int callId) throws Exception {
-
+            
+            long start = System.currentTimeMillis();
+            
             PhoenixProxyProtos.QueryResponse.Builder responseBuilder
                     = PhoenixProxyProtos.QueryResponse.newBuilder()
                     .setCallId(callId);
@@ -257,6 +263,11 @@ public class EchoServer2 {
             try {
                 // select data
                 ResultSet rs = getConnection().createStatement().executeQuery(query);
+                
+                long queryExecuted = System.currentTimeMillis();
+                long queryDuration = queryExecuted - start;
+                log("Query execution duration: " + queryDuration + "ms");
+                
                 ResultSetMetaData meta = rs.getMetaData();
                 int columnCount = meta.getColumnCount();
 
@@ -273,12 +284,20 @@ public class EchoServer2 {
                             .build();
                     responseBuilder.addMapping(column);
                 }
-
+                
+                long metadataRead = System.currentTimeMillis();
+                long metaDuration = metadataRead - queryExecuted;
+                log("Metadata reading duration: " + metaDuration + "ms");
+                
+                long resultsetDuration = 0;
                 // data
                 while (rs.next()) {
+                    
+                    long resultsetRowStart = System.currentTimeMillis();
+                    
                     PhoenixProxyProtos.Row.Builder rowBuilder
                             = PhoenixProxyProtos.Row.newBuilder();
-
+                    
                     for (int i = 1; i <= columnCount; i++) {
                         ByteString value = getValue(rs, meta, i);
                         rowBuilder.addBytes(value);
@@ -286,7 +305,13 @@ public class EchoServer2 {
 
                     PhoenixProxyProtos.Row row = rowBuilder.build();
                     responseBuilder.addRows(row);
+                    
+                    long resultsetRowDuration = System.currentTimeMillis() - resultsetRowStart;
+                    resultsetDuration += resultsetRowDuration; 
                 }
+                
+                log("Resultset mapping duration: " + resultsetDuration + "ms");
+                
             } catch (Exception e) {
                 PhoenixProxyProtos.QueryException exception 
                         = PhoenixProxyProtos.QueryException.newBuilder()
@@ -296,15 +321,31 @@ public class EchoServer2 {
             }
 
             PhoenixProxyProtos.QueryResponse response = responseBuilder.build();
+            
+            long queryAndBuildDuration = System.currentTimeMillis() - start;
+            log("Whole query duration: " + queryAndBuildDuration + "ms");
+            
             return response;
         }
         
         private ByteString getValue(ResultSet rs, ResultSetMetaData meta, 
                 int column) throws SQLException {
 
-            byte[] bytes = rs.getBytes(column);
+            byte[] bytes = null;
+            if (meta.getColumnType(column) == Types.DATE) {
+                Date d = (Date)rs.getObject(column);
+                if (d != null) {
+                    long time = d.getTime();
+                    log("Date(long) value:" + time);
+                    ByteBuffer wrapper = ByteBuffer.allocate(8);
+                    wrapper.putLong(time);
+                    bytes = wrapper.array();
+                }
+            } else {
+                bytes = rs.getBytes(column);
+            }
             
-            if (rs.wasNull()) {
+            if (bytes == null || rs.wasNull()) {
                 return ByteString.EMPTY;
             }
             
@@ -406,6 +447,13 @@ public class EchoServer2 {
     }
 
     public static void main(String[] args) throws Exception {
-        new EchoServer2(null, 8989);
+        
+        if (args.length < 2) {
+            throw new IllegalArgumentException("You must pass 2 parameters: <port> <zooKeeper>");
+        }
+        
+        Integer port = Integer.valueOf(args[0]);
+        String zooKeeper = args[1];
+        new EchoServer2(null, port, zooKeeper);
     }
 }
