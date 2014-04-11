@@ -17,16 +17,21 @@ message QueryRequest {
 
 message ColumnMapping {
 	enum Type {
-		INTEGER = 1;
-		VARCHAR = 2;
-		BINARY = 3;
-        DOUBLE = 4;
-        FLOAT = 5;
-        BIGINT = 6;
-        BOOLEAN = 7;
-        TIMESTAMP = 8;
-        DATE = 10;
-		TINYINT = 11;
+            INTEGER = 1;
+            VARCHAR = 2;
+            BINARY = 3;
+            DOUBLE = 4;
+            FLOAT = 5;
+            BIGINT = 6;
+            BOOLEAN = 7;
+            TIMESTAMP = 8;
+            DATE = 10;
+            TINYINT = 11;
+            SMALLINT = 12;
+            DECIMAL = 13;
+            TIME = 14;
+            CHAR = 15;
+            VARBINARY = 16;
 	}
 	required string name = 1;
 	required Type type = 2;
@@ -47,7 +52,6 @@ message QueryResponse {
 	optional QueryException exception = 4;
 
 }
-
 
 service PhoenixProxy {
 	rpc query (QueryRequest) returns (QueryResponse);
