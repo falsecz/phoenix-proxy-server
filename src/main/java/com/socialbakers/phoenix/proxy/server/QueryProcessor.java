@@ -21,6 +21,7 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang.StringUtils;
 
 /**
@@ -29,6 +30,7 @@ import org.apache.commons.lang.StringUtils;
  */
 class QueryProcessor {
     
+    static int conCounter = 0;
     private static final Logger logger = Logger.getLogger(QueryProcessor.class.getName());
     
     private Connection conn = null;
@@ -39,6 +41,7 @@ class QueryProcessor {
     QueryProcessor(String zooKeeper) throws SQLException {
         this.zooKeeper = zooKeeper;
         this.linkedBlockingDeque = new ArrayBlockingQueue<Runnable>(20000);
+        DriverManager.registerDriver(new PhoenixDriver());
         getConnection();
     }
 
@@ -52,23 +55,22 @@ class QueryProcessor {
         String query = queryRequest.getQuery();
 	PhoenixProxyProtos.QueryRequest.Type type = queryRequest.getType();
         
+        Connection con = null;
+        
         try {
+//            System.out.println(++conCounter);
             if (type == PhoenixProxyProtos.QueryRequest.Type.UPDATE) {
                 // getConnection().createStatement().execute(query);
-                Connection con = getConnection();
+                con = getConnection();
                 PreparedStatement upsertStmt = con.prepareStatement(query);
                 int rowsInserted = upsertStmt.executeUpdate();
                 //		    int c = getConnection().createStatement().executeUpdate(query);
                 log("Updated lines count:" + rowsInserted);
                 con.commit();
-
             } else {
                 // select data
-                ResultSet rs = getConnection().createStatement().executeQuery(query);
-
-                long queryExecuted = System.currentTimeMillis();
-                long queryDuration = queryExecuted - start;
-                log("Query execution duration: " + queryDuration + "ms");
+                con = getConnection();
+                ResultSet rs = con.createStatement().executeQuery(query);
 
                 ResultSetMetaData meta = rs.getMetaData();
                 int columnCount = meta.getColumnCount();
@@ -85,11 +87,6 @@ class QueryProcessor {
                     responseBuilder.addMapping(column);
                 }
 
-                long metadataRead = System.currentTimeMillis();
-                long metaDuration = metadataRead - queryExecuted;
-                log("Metadata reading duration: " + metaDuration + "ms");
-
-                long resultsetDuration = 0;
                 // data
                 while (rs.next()) {
 
@@ -104,11 +101,7 @@ class QueryProcessor {
 
                     PhoenixProxyProtos.Row row = rowBuilder.build();
                     responseBuilder.addRows(row);
-
-                    long resultsetRowDuration = System.currentTimeMillis() - resultsetRowStart;
-                    resultsetDuration += resultsetRowDuration;
                 }
-                log("Resultset mapping duration: " + resultsetDuration + "ms");
             }
 
         } catch (Exception e) {
@@ -117,43 +110,49 @@ class QueryProcessor {
                     .setMessage(e.getMessage())
                     .build();
             responseBuilder.setException(exception);
+        } finally {
+            if (con != null) {
+                try {
+                    con.close();
+                } catch (Exception e) {}
+            }
         }
 
         PhoenixProxyProtos.QueryResponse response = responseBuilder.build();
 
-        long queryAndBuildDuration = System.currentTimeMillis() - start;
-        log("Whole query duration: " + queryAndBuildDuration + "ms");
+//        long queryAndBuildDuration = System.currentTimeMillis() - start;
+//        log("Whole query duration: " + queryAndBuildDuration + "ms");
 
         return response;
     }
 
     private Connection getConnection() throws SQLException {
-        if (conn != null) {
-            connectionCounter++;
+//        if (conn != null) {
+//            connectionCounter++;
+//
+//            //create new connection
+//            if (connectionCounter == 500) {
+//                new Thread(new Runnable() {
+//                    @Override
+//                    public void run() {
+//                        try {
+//                            System.out.println("creating new connection");
+//                            Connection c = DriverManager.getConnection("jdbc:phoenix:" + zooKeeper);
+//                            System.out.println("new connection created");
+//
+//                            conn = c;
+//                            connectionCounter = 0;
+//                        } catch (SQLException ex) {
+//                            log(null, ex);
+//                        }
+//                    }
+//                }).start();
+//            }
+//
+//            return conn;
+//        }
 
-            //create new connection
-            if (connectionCounter == 500) {
-                new Thread(new Runnable() {
-                    @Override
-                    public void run() {
-                        try {
-                            System.out.println("creating new connection");
-                            Connection c = DriverManager.getConnection("jdbc:phoenix:" + zooKeeper);
-                            System.out.println("new connection created");
-
-                            conn = c;
-                            connectionCounter = 0;
-                        } catch (SQLException ex) {
-                            log(null, ex);
-                        }
-                    }
-                }).start();
-            }
-
-            return conn;
-        }
-
-        DriverManager.registerDriver(new PhoenixDriver());
+//        DriverManager.registerDriver(new PhoenixDriver());
         conn = DriverManager.getConnection("jdbc:phoenix:" + zooKeeper);
         return conn;
     }

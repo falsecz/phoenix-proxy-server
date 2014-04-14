@@ -6,17 +6,12 @@
 
 package com.socialbakers.phoenix.proxy.server;
 
-import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.channels.SocketChannel;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.RejectedExecutionHandler;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
 /**
  *
@@ -24,9 +19,10 @@ import java.util.logging.Logger;
  */
 class RequestPool extends ThreadPoolExecutor {
 
-    private static final RejectedExecutionHandler rejectionHandler = new RejectedExecutionHandlerImpl();
+    private RequestProcessor.SocketWriter writer;
     
-    RequestPool(int corePoolSize, int maximumPoolSize, long keepAliveTimeMs, int queueSize) {
+    RequestPool(int corePoolSize, int maximumPoolSize, long keepAliveTimeMs, int queueSize, 
+            RequestProcessor.SocketWriter writer, RejectedExecutionHandler rejectionHandler) {
         super(corePoolSize, maximumPoolSize, keepAliveTimeMs, TimeUnit.MILLISECONDS, 
                 new ArrayBlockingQueue<Runnable>(queueSize), Executors.defaultThreadFactory(), rejectionHandler);
     }
@@ -61,25 +57,5 @@ class RequestPool extends ThreadPoolExecutor {
     public void execute(Runnable r) {
         throw new UnsupportedOperationException("Only the " + RequestProcessor.class.getName() 
                 + " instance can be executed.");
-    }
-    
-    /**
-     * Sends ZERO to client if command was rejected.
-     */
-    private static class RejectedExecutionHandlerImpl implements RejectedExecutionHandler {
-        @Override
-        public void rejectedExecution(Runnable r, ThreadPoolExecutor executor) {
-            try {
-                ByteBuffer lenBuf = ByteBuffer.allocate(4);
-                lenBuf.putInt(0);
-                byte[] zero = lenBuf.array();
-                SocketChannel channel = ((RequestProcessor)r).getChannel();
-                channel.write(ByteBuffer.wrap(zero));
-            } catch (IOException ex) {
-                Logger.getLogger(RequestPool.class.getName()).log(Level.SEVERE, null, ex);
-            } finally {
-                System.out.println(r.toString() + " is rejected, sendind ZERO to client.");
-            }
-        }
     }
 }
