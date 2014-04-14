@@ -1,5 +1,6 @@
 package com.socialbakers.phoenix.proxy.server;
 
+import com.socialbakers.phoenix.proxy.PhoenixProxyProtos;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
@@ -28,12 +29,15 @@ public class ProxyServer {
     private Map<SocketChannel, List<byte[]>> outgoingData;
     private Map<SocketChannel, IncomingData> incomingData;
     private QueryProcessor queryProcessor;
+    private RequestPool requestPool;
     
-    public ProxyServer(InetAddress addr, int port, String zooKeeper) throws SQLException {
+    public ProxyServer(InetAddress addr, int port, String zooKeeper,
+            int corePoolSize, int maximumPoolSize, long keepAliveTimeMs, int queueSize) throws SQLException {
 	
         this.addr = addr;
 	this.port = port;
-	
+	this.requestPool = new RequestPool(corePoolSize, maximumPoolSize, keepAliveTimeMs, queueSize);
+        
 	queryProcessor = new QueryProcessor(zooKeeper);
 	outgoingData = new HashMap<SocketChannel, List<byte[]>>();
 	incomingData = new HashMap<SocketChannel, IncomingData>();
@@ -139,8 +143,9 @@ public class ProxyServer {
 
 	if (message.isComplete()) {
 	    incomingData.remove(channel);
-	    RequestProcessor processor = new RequestProcessor(key, message, queryProcessor);
-	    processor.start();
+            PhoenixProxyProtos.QueryRequest queryRequest = message.toQueryRequest();
+	    RequestProcessor processor = new RequestProcessor(key, queryRequest, queryProcessor);
+	    requestPool.execute(processor);
 	}
     }
 
@@ -178,17 +183,41 @@ public class ProxyServer {
         }
         logger.log(Level.SEVERE, msg, t);
     }
-
+    
+    private static final String C = "-c"; // core pool size
+    private static final String M = "-m"; // max pool size
+    private static final String Q = "-q"; // queue size
+    private static final String K = "-k"; // keep alive time in milliseconds
+    
     public static void main(String[] args) throws Exception {
 
 	if (args.length < 2) {
-	    System.err.println("You must pass 2 parameters: <port> <zooKeeper>");
+	    System.err.println("You must pass at least 2 required parameters: <port> <zooKeeper>");
+	    System.err.println("Optional parameters: " + C + "<corePoolSize> " 
+                    + M + "<maxPoolSize> " + Q + "<queueSize> " + K + "<keepAliveInMillis>");
 	    System.exit(1);
 	}
-
+        
 	Integer port = Integer.valueOf(args[0]);
 	String zooKeeper = args[1];
-        ProxyServer proxyServer = new ProxyServer(null, port, zooKeeper);
+        int corePoolSize = 128;
+        int maxPoolSize = 128;
+        int queueSize = 20000;
+        int keepAliveInMillis = 20000;
+        
+        
+        for (int i = 2; i < args.length; i++) {
+            String arg = args[i];
+            if (arg.startsWith("-c")) {
+                corePoolSize = Integer.valueOf(arg.replaceFirst("-c", ""));
+            } else if (arg.startsWith("-m")) {
+            } else if (arg.startsWith("-q")) {
+            } else if (arg.startsWith("-k")) {
+                
+            }
+        }
+        
+        ProxyServer proxyServer = new ProxyServer(null, port, zooKeeper, corePoolSize, maxPoolSize, keepAliveInMillis, queueSize);
         proxyServer.startServer();
     }
 }

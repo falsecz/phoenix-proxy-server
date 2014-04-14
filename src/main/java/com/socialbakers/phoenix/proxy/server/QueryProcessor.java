@@ -42,14 +42,16 @@ class QueryProcessor {
         getConnection();
     }
 
-    PhoenixProxyProtos.QueryResponse sendQuery(String query, int callId, 
-            PhoenixProxyProtos.QueryRequest.Type type) throws Exception {
+    PhoenixProxyProtos.QueryResponse sendQuery(PhoenixProxyProtos.QueryRequest queryRequest) throws Exception {
 
         long start = System.currentTimeMillis();
 
-        PhoenixProxyProtos.QueryResponse.Builder responseBuilder = PhoenixProxyProtos.QueryResponse.newBuilder()
-                .setCallId(callId);
-
+        PhoenixProxyProtos.QueryResponse.Builder responseBuilder = PhoenixProxyProtos.QueryResponse.newBuilder();
+        responseBuilder.setCallId(queryRequest.getCallId());
+        
+        String query = queryRequest.getQuery();
+	PhoenixProxyProtos.QueryRequest.Type type = queryRequest.getType();
+        
         try {
             if (type == PhoenixProxyProtos.QueryRequest.Type.UPDATE) {
                 // getConnection().createStatement().execute(query);
@@ -112,7 +114,7 @@ class QueryProcessor {
         } catch (Exception e) {
             e.printStackTrace();
             PhoenixProxyProtos.QueryException exception = PhoenixProxyProtos.QueryException.newBuilder()
-                    .setMessage("mrdka")
+                    .setMessage(e.getMessage())
                     .build();
             responseBuilder.setException(exception);
         }
