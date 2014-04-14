@@ -7,6 +7,7 @@ package com.socialbakers.phoenix.proxy.server;
 
 import com.socialbakers.phoenix.proxy.PhoenixProxyProtos;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import org.eclipse.jdt.internal.core.Assert;
 
 /**
@@ -15,28 +16,40 @@ import org.eclipse.jdt.internal.core.Assert;
  */
 class IncomingData {
 
+    boolean lenRead;
     int len;
     int read;
     byte[] data;
 
-    IncomingData(int len) {
-        this.len = len;
+    IncomingData() {
+        this.lenRead = false;
+        this.len = 4;
         this.read = 0;
         this.data = new byte[len];
     }
-
-    void read(byte[] buf, int size) {
+    
+    synchronized void read(byte[] buf, int size) {
         System.arraycopy(buf, 0, data, read, size);
         read += size;
+        
+        if (!lenRead && len == read) {
+            // just read len of data
+            ByteBuffer wrapped = ByteBuffer.wrap(data);
+	    len = wrapped.getInt();
+            data = new byte[len];
+            read = 0;
+            lenRead = true;
+        }
+        
         Assert.isTrue(len >= read, "Data len overflow!");
     }
 
-    int left() {
+    synchronized int left() {
         return len - read;
     }
 
-    boolean isComplete() {
-        return len == read;
+    synchronized boolean isComplete() {
+        return lenRead && len == read;
     }
 
     PhoenixProxyProtos.QueryRequest toQueryRequest() throws IOException {

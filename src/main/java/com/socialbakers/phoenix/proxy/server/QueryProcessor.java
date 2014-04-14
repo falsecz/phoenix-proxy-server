@@ -21,7 +21,6 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang.StringUtils;
 
 /**
@@ -30,7 +29,6 @@ import org.apache.commons.lang.StringUtils;
  */
 class QueryProcessor {
     
-    static int conCounter = 0;
     private static final Logger logger = Logger.getLogger(QueryProcessor.class.getName());
     
     private Connection conn = null;
@@ -47,8 +45,6 @@ class QueryProcessor {
 
     PhoenixProxyProtos.QueryResponse sendQuery(PhoenixProxyProtos.QueryRequest queryRequest) throws Exception {
 
-        long start = System.currentTimeMillis();
-
         PhoenixProxyProtos.QueryResponse.Builder responseBuilder = PhoenixProxyProtos.QueryResponse.newBuilder();
         responseBuilder.setCallId(queryRequest.getCallId());
         
@@ -58,13 +54,10 @@ class QueryProcessor {
         Connection con = null;
         
         try {
-//            System.out.println(++conCounter);
             if (type == PhoenixProxyProtos.QueryRequest.Type.UPDATE) {
-                // getConnection().createStatement().execute(query);
                 con = getConnection();
                 PreparedStatement upsertStmt = con.prepareStatement(query);
                 int rowsInserted = upsertStmt.executeUpdate();
-                //		    int c = getConnection().createStatement().executeUpdate(query);
                 log("Updated lines count:" + rowsInserted);
                 con.commit();
             } else {
@@ -89,9 +82,6 @@ class QueryProcessor {
 
                 // data
                 while (rs.next()) {
-
-                    long resultsetRowStart = System.currentTimeMillis();
-
                     PhoenixProxyProtos.Row.Builder rowBuilder = PhoenixProxyProtos.Row.newBuilder();
 
                     for (int i = 1; i <= columnCount; i++) {
@@ -105,7 +95,7 @@ class QueryProcessor {
             }
 
         } catch (Exception e) {
-            e.printStackTrace();
+            log(e.getMessage(), e);
             PhoenixProxyProtos.QueryException exception = PhoenixProxyProtos.QueryException.newBuilder()
                     .setMessage(e.getMessage())
                     .build();
@@ -119,10 +109,6 @@ class QueryProcessor {
         }
 
         PhoenixProxyProtos.QueryResponse response = responseBuilder.build();
-
-//        long queryAndBuildDuration = System.currentTimeMillis() - start;
-//        log("Whole query duration: " + queryAndBuildDuration + "ms");
-
         return response;
     }
 

@@ -3,13 +3,13 @@
  * To change this template file, choose Tools | Templates
  * and open the template in the editor.
  */
-
 package com.socialbakers.phoenix.proxy.server;
 
 import com.socialbakers.phoenix.proxy.PhoenixProxyProtos;
-import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import org.apache.commons.lang.StringUtils;
 
 /**
  *
@@ -17,67 +17,68 @@ import java.nio.channels.SelectionKey;
  */
 class RequestProcessor implements Runnable {
 
-	private SelectionKey key;
-	private PhoenixProxyProtos.QueryRequest queryRequest;
-        private QueryProcessor queryProcessor;
-        private SocketWriter writer;
-        
-	RequestProcessor(SelectionKey key, PhoenixProxyProtos.QueryRequest queryRequest, 
-                QueryProcessor queryProcessor, SocketWriter writer) {
-	    this.key = key;
-	    this.queryRequest = queryRequest;
-            this.queryProcessor = queryProcessor;
-            this.writer = writer;
-	}
+    private static final Logger logger = Logger.getLogger(RequestProcessor.class.getName());
 
-        SelectionKey getKey() {
-            return key;
-        }
-        
-//        SocketChannel getChannel() {
-//            return (SocketChannel) key.channel();
-//        }
-        
-	@Override
-	public void run() {
+    private SelectionKey key;
+    private PhoenixProxyProtos.QueryRequest queryRequest;
+    private QueryProcessor queryProcessor;
+    private SocketWriter writer;
 
-	    try {
-		// JDBC read data
-		PhoenixProxyProtos.QueryResponse response = queryProcessor.sendQuery(queryRequest);
+    RequestProcessor(SelectionKey key, PhoenixProxyProtos.QueryRequest queryRequest,
+            QueryProcessor queryProcessor, SocketWriter writer) {
+        this.key = key;
+        this.queryRequest = queryRequest;
+        this.queryProcessor = queryProcessor;
+        this.writer = writer;
+    }
 
-		// data to bytes
-		byte[] data = response.toByteArray();
-		int len = data.length;
+    SelectionKey getKey() {
+        return key;
+    }
 
-                // response
-//		System.out.println("response len: " + data.length);
-//		SocketChannel channel = getChannel();
-                
-                ByteBuffer wrap = ByteBuffer.allocate(data.length + 4);
-                wrap.putInt(len);
-                wrap.put(data);
-                wrap.flip();
-                byte[] bytes = wrap.array();
-                
-//                System.out.println("wrap len: " + wrap.array().length);
-//                while (wrap.hasRemaining()) {
-//                    int write = channel.write(wrap);
-//                    System.out.println("send: " + write);
-//                }
-//                doEcho(key, lenBytes);
-//                doEcho(key, data);
-                
-                writer.write(key, bytes);
-                
-	    } catch (IOException e) {
-		e.printStackTrace();
-	    } catch (Exception e) {
-		e.printStackTrace();
-//                Logger.getLogger(EchoServer2.class.getName()).log(Level.SEVERE, null, ex);
-	    }
-	}
-        
-        interface SocketWriter {
-            void write(SelectionKey key, byte[] bytes);
+    PhoenixProxyProtos.QueryResponse createExceptionResponse(String message) {
+        PhoenixProxyProtos.QueryResponse.Builder responseBuilder = PhoenixProxyProtos.QueryResponse.newBuilder();
+        responseBuilder.setCallId(queryRequest.getCallId());
+        PhoenixProxyProtos.QueryException exception = PhoenixProxyProtos.QueryException.newBuilder()
+                .setMessage(message)
+                .build();
+        responseBuilder.setException(exception);
+        PhoenixProxyProtos.QueryResponse response = responseBuilder.build();
+        return response;
+    }
+
+    @Override
+    public void run() {
+
+        try {
+            // JDBC read data
+            PhoenixProxyProtos.QueryResponse response = queryProcessor.sendQuery(queryRequest);
+
+            // data to bytes
+            byte[] data = response.toByteArray();
+            writer.write(key, data);
+
+        } catch (Exception e) {
+            log(e);
         }
     }
+
+    private static void log(String msg) {
+        logger.log(Level.SEVERE, msg);
+    }
+
+    private static void log(Throwable t) {
+        log(null, t);
+    }
+
+    private static void log(String msg, Throwable t) {
+        if (StringUtils.isBlank(msg) && t != null) {
+            msg = t.getMessage();
+        }
+        logger.log(Level.SEVERE, msg, t);
+    }
+
+    interface SocketWriter {
+        void write(SelectionKey key, byte[] bytes);
+    }
+}

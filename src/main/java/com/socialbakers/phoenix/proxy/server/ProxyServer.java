@@ -23,7 +23,7 @@ import org.apache.commons.lang.StringUtils;
 
 public class ProxyServer {
 
-    private static final Logger logger = Logger.getLogger(QueryProcessor.class.getName());
+    private static final Logger logger = Logger.getLogger(ProxyServer.class.getName());
     
     private InetAddress addr;
     private int port;
@@ -35,20 +35,23 @@ public class ProxyServer {
     
     private RequestProcessor.SocketWriter writer = new RequestProcessor.SocketWriter() {
         @Override
-        public void write(SelectionKey key, byte[] bytes) {
-//            doEcho(key, bytes);
+        public void write(SelectionKey key, byte[] data) {
+            
             synchronized (key) {
+
                 SocketChannel channel = (SocketChannel) key.channel();
-                ByteBuffer wrap = ByteBuffer.wrap(bytes);
+                
+                ByteBuffer wrap = ByteBuffer.allocate(data.length + 4);
+                wrap.putInt(data.length);
+                wrap.put(data);
+                wrap.flip();
+
                 while (wrap.hasRemaining()) {
                     try {
                         channel.write(wrap);
                     } catch (IOException ex) {
-                        try {
-                            closeChannel(key);
-                        } catch (IOException ex1) {
-                            Logger.getLogger(ProxyServer.class.getName()).log(Level.SEVERE, null, ex1);
-                        }
+                        log("closing connection cause of exception.", ex);
+                        closeChannel(key);
                         return;
                     }
                 }
@@ -57,14 +60,26 @@ public class ProxyServer {
     };
     
     private RejectedExecutionHandler rejectionHandler = new RejectedExecutionHandler() {
+        
+        static final String msgFormat = 
+                "Request rejected becuse of queue overflow. corePoolSize:%d maxPoolSize:%d active:%d inQueue:%d";
+
         @Override
         public void rejectedExecution(Runnable r, ThreadPoolExecutor executor) {
-            ByteBuffer lenBuf = ByteBuffer.allocate(4);
-            lenBuf.putInt(0);
-            byte[] zero = lenBuf.array();
-            SelectionKey key = ((RequestProcessor) r).getKey();
-            writer.write(key, zero);
-            System.out.println(r.toString() + " is rejected, sendind ZERO to client.");
+            RequestProcessor request = (RequestProcessor) r;
+            RequestPool pool = (RequestPool) executor;
+
+            int corePoolSize = pool.getCorePoolSize();
+            int maximumPoolSize = pool.getMaximumPoolSize();
+            int activeCount = pool.getActiveCount();
+            int inQueue = pool.getCmdCountInQueue();
+
+            String msg = String.format(msgFormat, corePoolSize, maximumPoolSize, activeCount, inQueue);
+            PhoenixProxyProtos.QueryResponse response = request.createExceptionResponse(msg);
+            byte[] bytes = response.toByteArray();
+
+            writer.write(request.getKey(), bytes);
+            log(msg);
         }
     };
     
@@ -148,7 +163,11 @@ public class ProxyServer {
 	IncomingData message = incomingData.get(channel);
         
 	// new incoming message or continue incomplete message
-	int bytesToRead = message == null ? 4 : message.left();
+        if (message == null) {
+            message = new IncomingData();
+            incomingData.put(channel, message);
+        }
+	int bytesToRead = message.left();
 
 	ByteBuffer buffer = ByteBuffer.allocate(bytesToRead);
 	int numRead = -1;
@@ -163,19 +182,8 @@ public class ProxyServer {
 	    return;
 	}
 
-	if (message == null) {
-	    // new request
-	    byte[] data = new byte[numRead];
-	    System.arraycopy(buffer.array(), 0, data, 0, numRead);
-	    ByteBuffer wrapped = ByteBuffer.wrap(data);
-	    int len = wrapped.getInt();
-//	    log("Got len of new message: " + len);
-	    message = new IncomingData(len);
-	    incomingData.put(channel, message);
-	} else {
-	    // continue reading
-	    message.read(buffer.array(), numRead);
-	}
+        // continue reading
+        message.read(buffer.array(), numRead);
 
 	if (message.isComplete()) {
 	    incomingData.remove(channel);
@@ -185,14 +193,18 @@ public class ProxyServer {
 	}
     }
     
-    private void closeChannel(SelectionKey key) throws IOException {
+    private void closeChannel(SelectionKey key) {
         SocketChannel channel = (SocketChannel) key.channel();
         this.outgoingData.remove(channel);
         this.incomingData.remove(channel);
         Socket socket = channel.socket();
         SocketAddress remoteAddr = socket.getRemoteSocketAddress();
         log("Connection closed by client: " + remoteAddr);
-        channel.close();
+        try {
+            channel.close();
+        } catch (IOException ex1) {
+            log(ex1);
+        }
         key.cancel();
     }
     
@@ -235,23 +247,6 @@ public class ProxyServer {
         }
         logger.log(Level.SEVERE, msg, t);
     }
-    
-
-    /**
-     * Sends ZERO to client if command was rejected.
-     */
-    private class RejectedExecutionHandlerImpl implements RejectedExecutionHandler {
-        @Override
-        public void rejectedExecution(Runnable r, ThreadPoolExecutor executor) {
-            ByteBuffer lenBuf = ByteBuffer.allocate(4);
-            lenBuf.putInt(0);
-            byte[] zero = lenBuf.array();
-            SelectionKey key = ((RequestProcessor) r).getKey();
-            writer.write(key, zero);
-            System.out.println(r.toString() + " is rejected, sendind ZERO to client.");
-        }
-    }
-    
     
     private static final String C = "-c"; // core pool size
     private static final String M = "-m"; // max pool size
