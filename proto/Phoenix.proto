@@ -4,7 +4,6 @@ option java_generic_services = true;
 option java_generate_equals_and_hash = true;
 option optimize_for = SPEED;
 
-
 enum DataType {
 	INTEGER = 1;
 	VARCHAR = 2;
@@ -23,48 +22,54 @@ enum DataType {
 	VARBINARY = 16;
 }
 
-
-message Param {
-	required DataType type = 1;
-	required bytes bytes = 2;
-	optional string name = 3;
-}
-
-message Query {
-	enum Type {
-		QUERY = 1;
-		UPDATE = 2;
-	}
-	required Type type = 3;
-	required string sql = 2;
-	repeated Param params
-
-}
-
 message QueryRequest {
+	message Query {
+		enum Type {
+			QUERY = 1;
+			UPDATE = 2;
+		}
+
+		message Param {
+			required DataType type = 1;
+			required bytes bytes = 2;
+			optional string name = 3;
+		}
+
+		required Type type = 3;
+		required string sql = 2;
+		repeated Param params
+
+	}
+
 	required int32 call_id = 1;
 	repeated Query query = 2;
 }
 
-message ColumnMapping {
-	required string name = 1;
-	required DataType type = 2;
-}
-
-message QueryException {
-	required string message = 1;
-}
-
-message Row {
-	repeated bytes bytes = 1;
-}
 
 message QueryResponse {
-	required int32 call_id = 1;
-	repeated ColumnMapping mapping = 2;
-	repeated Row rows = 3;
-	optional QueryException exception = 4;
+	message QueryException {
+		required string message = 1;
+		optional uint32 query_id = 2;
+	}
 
+	message Result {
+		message ColumnMapping {
+			required string name = 1;
+			required DataType type = 2;
+		}
+
+		message Row {
+			repeated bytes bytes = 1;
+		}
+
+		repeated ColumnMapping mapping = 1;
+		repeated Row rows = 2;
+
+	}
+
+	required int32 call_id = 1;
+	optional QueryException exception = 2;
+	repeated Result results = 3;
 }
 
 service PhoenixProxy {
