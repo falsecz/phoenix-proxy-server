@@ -4,37 +4,51 @@ option java_generic_services = true;
 option java_generate_equals_and_hash = true;
 option optimize_for = SPEED;
 
-message QueryRequest {
+
+enum DataType {
+	INTEGER = 1;
+	VARCHAR = 2;
+	BINARY = 3;
+	DOUBLE = 4;
+	FLOAT = 5;
+	BIGINT = 6;
+	BOOLEAN = 7;
+	TIMESTAMP = 8;
+	DATE = 10;
+	TINYINT = 11;
+	SMALLINT = 12;
+	DECIMAL = 13;
+	TIME = 14;
+	CHAR = 15;
+	VARBINARY = 16;
+}
+
+
+message Param {
+	required DataType type = 1;
+	required bytes bytes = 2;
+	optional string name = 3;
+}
+
+message Query {
 	enum Type {
 		QUERY = 1;
 		UPDATE = 2;
 	}
-
-	required int32 call_id = 1;
-	required string query = 2;
 	required Type type = 3;
+	required string sql = 2;
+	repeated Param params
+
+}
+
+message QueryRequest {
+	required int32 call_id = 1;
+	repeated Query query = 2;
 }
 
 message ColumnMapping {
-	enum Type {
-            INTEGER = 1;
-            VARCHAR = 2;
-            BINARY = 3;
-            DOUBLE = 4;
-            FLOAT = 5;
-            BIGINT = 6;
-            BOOLEAN = 7;
-            TIMESTAMP = 8;
-            DATE = 10;
-            TINYINT = 11;
-            SMALLINT = 12;
-            DECIMAL = 13;
-            TIME = 14;
-            CHAR = 15;
-            VARBINARY = 16;
-	}
 	required string name = 1;
-	required Type type = 2;
+	required DataType type = 2;
 }
 
 message QueryException {
