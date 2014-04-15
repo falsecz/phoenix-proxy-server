@@ -181,10 +181,15 @@ public class ProxyServer {
         message.read(buffer.array(), numRead);
 
 	if (message.isComplete()) {
-	    incomingData.remove(channel);
-            PhoenixProxyProtos.QueryRequest queryRequest = message.toQueryRequest();
-	    RequestProcessor processor = new RequestProcessor(key, queryRequest, queryProcessor, writer);
-	    requestPool.execute(processor);
+            try {
+                incomingData.remove(channel);
+                PhoenixProxyProtos.QueryRequest queryRequest = message.toQueryRequest();
+                RequestProcessor processor = new RequestProcessor(key, queryRequest, queryProcessor, writer);
+                requestPool.execute(processor);
+            } catch (Exception e) {
+                log(e);
+                closeChannel(key);
+            }
 	}
     }
     
