@@ -1,26 +1,22 @@
-/*
- * To change this license header, choose License Headers in Project Properties.
- * To change this template file, choose Tools | Templates
- * and open the template in the editor.
- */
 package com.socialbakers.phoenix.proxy.server;
 
 import com.google.protobuf.ByteString;
 import com.socialbakers.phoenix.proxy.PhoenixProxyProtos.DataType;
+import com.socialbakers.phoenix.proxy.PhoenixProxyProtos.QueryRequest.Query.Param;
 import java.math.BigDecimal;
 import java.nio.ByteBuffer;
+import java.nio.charset.Charset;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Time;
 import java.sql.Timestamp;
 import java.sql.Types;
-import java.util.Date;
+import java.sql.Date;
+import java.util.List;
+import org.eclipse.jdt.internal.core.Assert;
 
-/**
- *
- * @author robert
- */
 public class ValueTypeMapper {
     
     static final int BYTE_SIZE = Byte.SIZE / Byte.SIZE;     // 1B
@@ -30,15 +26,21 @@ public class ValueTypeMapper {
     
     
     static ByteString getValue(ResultSet rs, ResultSetMetaData meta,
-            int column) throws SQLException, Exception {
+            int column) throws SQLException {
 
         Object o = rs.getObject(column);
         if (o == null || rs.wasNull()) {
             return ByteString.EMPTY;
         }
 
-        ByteBuffer b = null;
         int type = meta.getColumnType(column);
+        
+        return ByteString.copyFrom(toBytes(o, type));
+    }
+    
+    static byte[] toBytes(Object o, int type) {
+                
+        ByteBuffer b = null;
         
         switch (type) {
             case Types.INTEGER:
@@ -94,10 +96,8 @@ public class ValueTypeMapper {
                 
             case Types.VARCHAR:
             case Types.CHAR:
-                // optimalization!
-                return ByteString.copyFromUtf8((String) o);
-//                b = ByteBuffer.wrap(ByteString.copyFromUtf8((String) o).toByteArray());
-//                break;
+                b = ByteBuffer.wrap(ByteString.copyFromUtf8((String) o).toByteArray());
+                break;
                 
             case Types.BINARY:
             case Types.VARBINARY:
@@ -105,13 +105,13 @@ public class ValueTypeMapper {
                 break;
                 
             default:
-                throw new Exception("Missing mapping for type " + type);
+                throw new IllegalStateException("Missing mapping for type " + type);
         }
         
-        return ByteString.copyFrom(b.array());
+        return b.array();
     }
-
-    static DataType getColumnType(int type) throws Exception {
+    
+    static DataType getColumnType(int type) {
 
         switch (type) {
             case Types.INTEGER: return DataType.INTEGER; 
@@ -131,7 +131,151 @@ public class ValueTypeMapper {
             case Types.VARBINARY: return DataType.VARBINARY;
 
             default:
-                throw new Exception("Missing mapping for type " + type);
+                throw new IllegalStateException("Missing mapping for type " + type);
         }
+    }
+    
+    
+    static void setPrepareStatementParameters(PreparedStatement preparedStatement, List<Param> params) 
+            throws SQLException {
+
+        for (int i = 0; i < params.size(); i++) {
+            
+            Param param = params.get(i);
+            int parametrIndex = i + 1;
+            byte[] bytes = param.getBytes().toByteArray();
+            
+            switch (param.getType()) {
+                case INTEGER:
+                    preparedStatement.setInt(parametrIndex, getInt(bytes));
+                    break;
+                    
+                case BIGINT:
+                    preparedStatement.setLong(parametrIndex, getLong(bytes));
+                    break;
+                    
+                case TINYINT:
+                    preparedStatement.setByte(parametrIndex, getByte(bytes));
+                    break;
+                    
+                case SMALLINT:
+                    preparedStatement.setShort(parametrIndex, getShort(bytes));
+                    break;
+                    
+                case FLOAT:
+                    preparedStatement.setFloat(parametrIndex, getFloat(bytes));
+                    break;
+                    
+                case DOUBLE:
+                    preparedStatement.setDouble(parametrIndex, getDouble(bytes));
+                    break;
+                    
+                case DECIMAL:
+                    preparedStatement.setBigDecimal(parametrIndex, getBigDecimal(bytes));
+                    break;
+                    
+                case BOOLEAN:
+                    preparedStatement.setBoolean(parametrIndex, getBoolean(bytes));
+                    break;
+                    
+                case DATE:
+                    preparedStatement.setDate(parametrIndex, getDate(bytes));
+                    break;
+                    
+                case TIME:
+                    preparedStatement.setTime(parametrIndex, getTime(bytes));
+                    break;
+                    
+                case TIMESTAMP:
+                    preparedStatement.setTimestamp(parametrIndex, getTimeStamp(bytes));
+                    break;
+                    
+                case VARCHAR:
+                case CHAR:
+                    preparedStatement.setString(parametrIndex, getString(bytes));
+                    break;
+                    
+                case BINARY:
+                case VARBINARY:
+                    preparedStatement.setBytes(parametrIndex, bytes);
+                    break;
+                
+                default:
+                    throw new IllegalStateException("Missing mapping for type " + param.getType());
+            }
+        }
+    }
+    
+    private static final String expErr = "Expected size for '%s' is %d but was %d";
+    
+    private static void checkSize(byte[] bytes, String typeName, int expectedSize) {
+        Assert.isTrue(bytes.length == expectedSize, String.format(expErr, typeName, expectedSize, bytes.length));
+    }
+    
+    static int getInt(byte[] bytes) {
+        checkSize(bytes, "int", INT_SIZE);
+        return ByteBuffer.wrap(bytes).getInt();
+    }
+    
+    static long getLong(byte[] bytes) {
+        checkSize(bytes, "long", LONG_SIZE);
+        return ByteBuffer.wrap(bytes).getLong();        
+    }
+
+    static byte getByte(byte[] bytes) {
+        checkSize(bytes, "byte", BYTE_SIZE);
+        return ByteBuffer.wrap(bytes).get();
+    }
+
+    static short getShort(byte[] bytes) {
+        checkSize(bytes, "short", SHORT_SIZE);
+        return ByteBuffer.wrap(bytes).getShort();
+    }
+
+    private static float getFloat(byte[] bytes) {
+        checkSize(bytes, "float", INT_SIZE);
+        return ByteBuffer.wrap(bytes).getFloat();
+    }
+
+    private static double getDouble(byte[] bytes) {
+        checkSize(bytes, "double", LONG_SIZE);
+        return ByteBuffer.wrap(bytes).getDouble();
+    }
+
+    private static BigDecimal getBigDecimal(byte[] bytes) {
+        checkSize(bytes, "decimal", LONG_SIZE);
+        double doubleValue = ByteBuffer.wrap(bytes).getDouble();
+        return BigDecimal.valueOf(doubleValue);
+    }
+
+    private static boolean getBoolean(byte[] bytes) {
+        checkSize(bytes, "boolean", BYTE_SIZE);
+        return bytes[0] == 0x01;
+    }
+
+    private static Date getDate(byte[] bytes) {
+        checkSize(bytes, "date", LONG_SIZE);
+        long longValue = ByteBuffer.wrap(bytes).getLong();
+        return new Date(longValue);
+    }
+
+    private static Time getTime(byte[] bytes) {
+        checkSize(bytes, "date", LONG_SIZE);
+        long longValue = ByteBuffer.wrap(bytes).getLong();
+        return new Time(longValue);
+    }
+
+    private static Timestamp getTimeStamp(byte[] bytes) {
+        checkSize(bytes, "date", LONG_SIZE + INT_SIZE);
+        ByteBuffer wrap = ByteBuffer.wrap(bytes);
+        long timeValue = wrap.getLong();
+        int nanoValue = wrap.getInt();
+        Timestamp timestamp = new Timestamp(timeValue);
+        timestamp.setNanos(nanoValue);
+        return timestamp;
+    }
+
+    private static String getString(byte[] bytes) {
+        return new String(bytes, Charset.forName("UTF-8"));
     }
 }

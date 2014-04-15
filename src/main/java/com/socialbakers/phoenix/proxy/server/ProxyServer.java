@@ -105,8 +105,8 @@ public class ProxyServer {
 	InetSocketAddress listenAddr = new InetSocketAddress(this.addr, this.port);
 	serverChannel.socket().bind(listenAddr);
 	serverChannel.register(this.selector, SelectionKey.OP_ACCEPT);
-
-	debug("Phoenix proxy listening on " + this.addr + ":" + this.port);
+        
+	debug("Phoenix proxy listening on " + listenAddr.getAddress().getHostAddress() + ":" + this.port);
 
 	// processing
 	while (true) {
@@ -188,7 +188,7 @@ public class ProxyServer {
                 RequestProcessor processor = new RequestProcessor(key, queryRequest, queryProcessor, writer);
                 requestPool.execute(processor);
             } catch (Exception e) {
-                log(e);
+                error(e);
                 closeChannel(key);
             }
 	}

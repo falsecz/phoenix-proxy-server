@@ -44,31 +44,33 @@ class QueryProcessor {
         responseBuilder.setCallId(queryRequest.getCallId());
         
         List<PhoenixProxyProtos.QueryRequest.Query> queries = queryRequest.getQueriesList();
-        for (int queryId = 0; queryId < queries.size(); queryId++) {
-            PhoenixProxyProtos.QueryRequest.Query query = queries.get(queryId);
-            
-            Type type = query.getType();
-            String sql = query.getSql();
-            
-            Connection con = null;
-
-            Result.Builder resultBuilder = Result.newBuilder();
-            
-            try {
+        Connection con = null;
+        int queryId = 0;
+        try {
+            for (; queryId < queries.size(); queryId++) {
                 
+                PhoenixProxyProtos.QueryRequest.Query query = queries.get(queryId);
+
+                Type type = query.getType();
+                String sql = query.getSql();
+
+                con = getConnection();
+
+                PreparedStatement preparedStatement = con.prepareStatement(sql);
+                ValueTypeMapper.setPrepareStatementParameters(preparedStatement, query.getParamsList());
+
+                Result.Builder resultBuilder = Result.newBuilder();
                 if (type == Type.UPDATE) {
-                    
-                    con = getConnection();
-                    PreparedStatement upsertStmt = con.prepareStatement(sql);
-                    int rowsInserted = upsertStmt.executeUpdate();
+
+                    // insert/update
+                    int rowsInserted = preparedStatement.executeUpdate();
                     debug("Updated lines count:" + rowsInserted);
                     con.commit();
-                    
+
                 } else if (type == Type.QUERY) {
-                    
+
                     // select data
-                    con = getConnection();
-                    ResultSet rs = con.createStatement().executeQuery(sql);
+                    ResultSet rs = preparedStatement.executeQuery();
 
                     ResultSetMetaData meta = rs.getMetaData();
                     int columnCount = meta.getColumnCount();
@@ -99,20 +101,25 @@ class QueryProcessor {
                     }
                 }
                 
+                con.close();
+                
                 Result result = resultBuilder.build();
                 responseBuilder.addResults(result);
                 
-            } catch (Exception e) {
-                error(e.getMessage(), e);
-                QueryException exception = QueryException.newBuilder()
-                        .setMessage(e.getMessage())
-                        .setQueryId(queryId)
-                        .build();
-                responseBuilder.setException(exception);
-                break;
-            } finally {
-                if (con != null) {
-                    try { con.close(); } catch (SQLException e) { error(e); }
+            }
+        } catch (Exception e) {
+            error(e.getMessage(), e);
+            QueryException exception = QueryException.newBuilder()
+                    .setMessage(e.getMessage())
+                    .setQueryId(queryId)
+                    .build();
+            responseBuilder.setException(exception);
+        } finally {
+            if (con != null) {
+                try {
+                    con.close();
+                } catch (SQLException e) {
+                    error(e);
                 }
             }
         }
