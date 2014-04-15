@@ -1,6 +1,7 @@
 package com.socialbakers.phoenix.proxy.server;
 
-import static com.socialbakers.phoenix.proxy.server.Logger.log;
+import static com.socialbakers.phoenix.proxy.server.Logger.debug;
+import static com.socialbakers.phoenix.proxy.server.Logger.error;
 
 import com.socialbakers.phoenix.proxy.PhoenixProxyProtos;
 import java.io.IOException;
@@ -47,7 +48,7 @@ public class ProxyServer {
                     try {
                         channel.write(wrap);
                     } catch (IOException ex) {
-                        log("closing connection cause of exception.", ex);
+                        error("closing connection cause of exception.", ex);
                         closeChannel(key);
                         return;
                     }
@@ -76,7 +77,7 @@ public class ProxyServer {
             byte[] bytes = response.toByteArray();
 
             writer.write(request.getKey(), bytes);
-            log(msg);
+            debug(msg);
         }
     };
     
@@ -105,7 +106,7 @@ public class ProxyServer {
 	serverChannel.socket().bind(listenAddr);
 	serverChannel.register(this.selector, SelectionKey.OP_ACCEPT);
 
-	log("Phoenix proxy listening on " + this.addr + ":" + this.port);
+	debug("Phoenix proxy listening on " + this.addr + ":" + this.port);
 
 	// processing
 	while (true) {
@@ -145,7 +146,7 @@ public class ProxyServer {
 
 	Socket socket = channel.socket();
 	SocketAddress remoteAddr = socket.getRemoteSocketAddress();
-	log("Connected to: " + remoteAddr);
+	debug("Connected to: " + remoteAddr);
 
 	// register channel with selector for further IO
 	outgoingData.put(channel, new ArrayList<byte[]>());
@@ -169,7 +170,7 @@ public class ProxyServer {
 	try {
 	    numRead = channel.read(buffer);
 	} catch (IOException e) {
-	    log(e);
+	    error(e);
 	}
 
 	if (numRead == -1) {
@@ -199,11 +200,11 @@ public class ProxyServer {
         this.incomingData.remove(channel);
         Socket socket = channel.socket();
         SocketAddress remoteAddr = socket.getRemoteSocketAddress();
-        log("Connection closed by client: " + remoteAddr);
+        debug("Connection closed by client: " + remoteAddr);
         try {
             channel.close();
         } catch (IOException ex1) {
-            log(ex1);
+            error(ex1);
         }
         key.cancel();
     }
@@ -239,8 +240,8 @@ public class ProxyServer {
     private static final String K = "-k"; // keep alive time in milliseconds
 
     
-    private static final String ZE = "PHOENIX_ZK";      // core pool size
-    private static final String PE = "PORT";            // core pool size
+    private static final String ZE = "PHOENIX_ZK";      // zooKeeper jdbc url
+    private static final String PE = "PORT";            // port
     private static final String CE = "CORE_POOL_SIZE";  // core pool size
     private static final String ME = "MAX_POOL_SIZE";   // max pool size
     private static final String QE = "QUEUE_SIZE";      // queue size

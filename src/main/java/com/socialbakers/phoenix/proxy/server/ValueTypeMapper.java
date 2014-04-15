@@ -6,7 +6,7 @@
 package com.socialbakers.phoenix.proxy.server;
 
 import com.google.protobuf.ByteString;
-import com.socialbakers.phoenix.proxy.PhoenixProxyProtos;
+import com.socialbakers.phoenix.proxy.PhoenixProxyProtos.DataType;
 import java.math.BigDecimal;
 import java.nio.ByteBuffer;
 import java.sql.ResultSet;
@@ -111,24 +111,24 @@ public class ValueTypeMapper {
         return ByteString.copyFrom(b.array());
     }
 
-    static PhoenixProxyProtos.ColumnMapping.Type getColumnType(int type) throws Exception {
+    static DataType getColumnType(int type) throws Exception {
 
         switch (type) {
-            case Types.INTEGER: return PhoenixProxyProtos.ColumnMapping.Type.INTEGER; 
-            case Types.BIGINT: return PhoenixProxyProtos.ColumnMapping.Type.BIGINT;
-            case Types.TINYINT: return PhoenixProxyProtos.ColumnMapping.Type.TINYINT;
-            case Types.SMALLINT: return PhoenixProxyProtos.ColumnMapping.Type.SMALLINT;
-            case Types.FLOAT: return PhoenixProxyProtos.ColumnMapping.Type.FLOAT;
-            case Types.DOUBLE: return PhoenixProxyProtos.ColumnMapping.Type.DOUBLE;
-            case Types.DECIMAL: return PhoenixProxyProtos.ColumnMapping.Type.DECIMAL;
-            case Types.BOOLEAN: return PhoenixProxyProtos.ColumnMapping.Type.BOOLEAN;
-            case Types.DATE: return PhoenixProxyProtos.ColumnMapping.Type.DATE;
-            case Types.TIME: return PhoenixProxyProtos.ColumnMapping.Type.TIME;
-            case Types.TIMESTAMP: return PhoenixProxyProtos.ColumnMapping.Type.TIMESTAMP;
-            case Types.VARCHAR: return PhoenixProxyProtos.ColumnMapping.Type.VARCHAR;
-            case Types.CHAR: return PhoenixProxyProtos.ColumnMapping.Type.CHAR;
-            case Types.BINARY: return PhoenixProxyProtos.ColumnMapping.Type.BINARY;
-            case Types.VARBINARY: return PhoenixProxyProtos.ColumnMapping.Type.VARBINARY;
+            case Types.INTEGER: return DataType.INTEGER; 
+            case Types.BIGINT: return DataType.BIGINT;
+            case Types.TINYINT: return DataType.TINYINT;
+            case Types.SMALLINT: return DataType.SMALLINT;
+            case Types.FLOAT: return DataType.FLOAT;
+            case Types.DOUBLE: return DataType.DOUBLE;
+            case Types.DECIMAL: return DataType.DECIMAL;
+            case Types.BOOLEAN: return DataType.BOOLEAN;
+            case Types.DATE: return DataType.DATE;
+            case Types.TIME: return DataType.TIME;
+            case Types.TIMESTAMP: return DataType.TIMESTAMP;
+            case Types.VARCHAR: return DataType.VARCHAR;
+            case Types.CHAR: return DataType.CHAR;
+            case Types.BINARY: return DataType.BINARY;
+            case Types.VARBINARY: return DataType.VARBINARY;
 
             default:
                 throw new Exception("Missing mapping for type " + type);

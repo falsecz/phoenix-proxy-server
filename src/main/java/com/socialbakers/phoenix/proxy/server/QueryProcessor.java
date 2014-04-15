@@ -1,25 +1,29 @@
 package com.socialbakers.phoenix.proxy.server;
 
-import static com.socialbakers.phoenix.proxy.server.Logger.log;
+import static com.socialbakers.phoenix.proxy.server.Logger.debug;
+import static com.socialbakers.phoenix.proxy.server.Logger.error;
 import static com.socialbakers.phoenix.proxy.server.ValueTypeMapper.getColumnType;
 import static com.socialbakers.phoenix.proxy.server.ValueTypeMapper.getValue;
 
 import com.google.protobuf.ByteString;
 import com.salesforce.phoenix.jdbc.PhoenixDriver;
+import com.socialbakers.phoenix.proxy.PhoenixProxyProtos.DataType;
 import com.socialbakers.phoenix.proxy.PhoenixProxyProtos;
+import com.socialbakers.phoenix.proxy.PhoenixProxyProtos.QueryRequest.Query.Type;
+import com.socialbakers.phoenix.proxy.PhoenixProxyProtos.QueryResponse.Result;
+import com.socialbakers.phoenix.proxy.PhoenixProxyProtos.QueryResponse.Result.ColumnMapping;
+import com.socialbakers.phoenix.proxy.PhoenixProxyProtos.QueryResponse.Result.Row;
+import com.socialbakers.phoenix.proxy.PhoenixProxyProtos.QueryResponse.QueryException;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
+import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 
-/**
- *
- * @author robert
- */
 class QueryProcessor {
     
     private Connection conn = null;
@@ -39,63 +43,77 @@ class QueryProcessor {
         PhoenixProxyProtos.QueryResponse.Builder responseBuilder = PhoenixProxyProtos.QueryResponse.newBuilder();
         responseBuilder.setCallId(queryRequest.getCallId());
         
-        String query = queryRequest.getQuery();
-	PhoenixProxyProtos.QueryRequest.Type type = queryRequest.getType();
-        
-        Connection con = null;
-        
-        try {
-            if (type == PhoenixProxyProtos.QueryRequest.Type.UPDATE) {
-                con = getConnection();
-                PreparedStatement upsertStmt = con.prepareStatement(query);
-                int rowsInserted = upsertStmt.executeUpdate();
-                log("Updated lines count:" + rowsInserted);
-                con.commit();
-            } else {
-                // select data
-                con = getConnection();
-                ResultSet rs = con.createStatement().executeQuery(query);
+        List<PhoenixProxyProtos.QueryRequest.Query> queries = queryRequest.getQueriesList();
+        for (int queryId = 0; queryId < queries.size(); queryId++) {
+            PhoenixProxyProtos.QueryRequest.Query query = queries.get(queryId);
+            
+            Type type = query.getType();
+            String sql = query.getSql();
+            
+            Connection con = null;
 
-                ResultSetMetaData meta = rs.getMetaData();
-                int columnCount = meta.getColumnCount();
+            Result.Builder resultBuilder = Result.newBuilder();
+            
+            try {
+                
+                if (type == Type.UPDATE) {
+                    
+                    con = getConnection();
+                    PreparedStatement upsertStmt = con.prepareStatement(sql);
+                    int rowsInserted = upsertStmt.executeUpdate();
+                    debug("Updated lines count:" + rowsInserted);
+                    con.commit();
+                    
+                } else if (type == Type.QUERY) {
+                    
+                    // select data
+                    con = getConnection();
+                    ResultSet rs = con.createStatement().executeQuery(sql);
 
-                // column metadata
-                for (int i = 1; i <= columnCount; i++) {
-                    String columnName = meta.getColumnName(i);
-                    PhoenixProxyProtos.ColumnMapping.Type columnType = getColumnType(meta.getColumnType(i));
+                    ResultSetMetaData meta = rs.getMetaData();
+                    int columnCount = meta.getColumnCount();
 
-                    PhoenixProxyProtos.ColumnMapping column = PhoenixProxyProtos.ColumnMapping.newBuilder()
-                            .setName(columnName)
-                            .setType(columnType)
-                            .build();
-                    responseBuilder.addMapping(column);
-                }
-
-                // data
-                while (rs.next()) {
-                    PhoenixProxyProtos.Row.Builder rowBuilder = PhoenixProxyProtos.Row.newBuilder();
-
+                    // column metadata
                     for (int i = 1; i <= columnCount; i++) {
-                        ByteString value = getValue(rs, meta, i);
-                        rowBuilder.addBytes(value);
+                        String columnName = meta.getColumnName(i);
+                        DataType columnType = getColumnType(meta.getColumnType(i));
+
+                        ColumnMapping column = ColumnMapping.newBuilder()
+                                .setName(columnName)
+                                .setType(columnType)
+                                .build();
+                        resultBuilder.addMapping(column);
                     }
 
-                    PhoenixProxyProtos.Row row = rowBuilder.build();
-                    responseBuilder.addRows(row);
-                }
-            }
+                    // data
+                    while (rs.next()) {
+                        Row.Builder rowBuilder = Row.newBuilder();
 
-        } catch (Exception e) {
-            log(e.getMessage(), e);
-            PhoenixProxyProtos.QueryException exception = PhoenixProxyProtos.QueryException.newBuilder()
-                    .setMessage(e.getMessage())
-                    .build();
-            responseBuilder.setException(exception);
-        } finally {
-            if (con != null) {
-                try {
-                    con.close();
-                } catch (Exception e) {}
+                        for (int i = 1; i <= columnCount; i++) {
+                            ByteString value = getValue(rs, meta, i);
+                            rowBuilder.addBytes(value);
+                        }
+
+                        Row row = rowBuilder.build();
+                        resultBuilder.addRows(row);
+                    }
+                }
+                
+                Result result = resultBuilder.build();
+                responseBuilder.addResults(result);
+                
+            } catch (Exception e) {
+                error(e.getMessage(), e);
+                QueryException exception = QueryException.newBuilder()
+                        .setMessage(e.getMessage())
+                        .setQueryId(queryId)
+                        .build();
+                responseBuilder.setException(exception);
+                break;
+            } finally {
+                if (con != null) {
+                    try { con.close(); } catch (SQLException e) { error(e); }
+                }
             }
         }
 

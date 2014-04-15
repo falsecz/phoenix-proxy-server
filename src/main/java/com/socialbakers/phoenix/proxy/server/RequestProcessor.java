@@ -5,15 +5,13 @@
  */
 package com.socialbakers.phoenix.proxy.server;
 
-import static com.socialbakers.phoenix.proxy.server.Logger.log;
+import static com.socialbakers.phoenix.proxy.server.Logger.error;
 
 import com.socialbakers.phoenix.proxy.PhoenixProxyProtos;
+import com.socialbakers.phoenix.proxy.PhoenixProxyProtos.QueryResponse;
+import com.socialbakers.phoenix.proxy.PhoenixProxyProtos.QueryResponse.QueryException;
 import java.nio.channels.SelectionKey;
 
-/**
- *
- * @author robert
- */
 class RequestProcessor implements Runnable {
 
     private SelectionKey key;
@@ -33,10 +31,10 @@ class RequestProcessor implements Runnable {
         return key;
     }
 
-    PhoenixProxyProtos.QueryResponse createExceptionResponse(String message) {
+    QueryResponse createExceptionResponse(String message) {
         PhoenixProxyProtos.QueryResponse.Builder responseBuilder = PhoenixProxyProtos.QueryResponse.newBuilder();
         responseBuilder.setCallId(queryRequest.getCallId());
-        PhoenixProxyProtos.QueryException exception = PhoenixProxyProtos.QueryException.newBuilder()
+        QueryException exception = QueryException.newBuilder()
                 .setMessage(message)
                 .build();
         responseBuilder.setException(exception);
@@ -56,7 +54,7 @@ class RequestProcessor implements Runnable {
             writer.write(key, data);
 
         } catch (Exception e) {
-            log(e);
+            error(e);
         }
     }
 

@@ -6,32 +6,34 @@
 
 package com.socialbakers.phoenix.proxy.server;
 
-import java.util.logging.Level;
 import org.apache.commons.lang.StringUtils;
+//import org.apache.log4j.BasicConfigurator;
 
 /**
  * @author robert
  */
 public class Logger {
     
-    private static final java.util.logging.Logger logger = java.util.logging.Logger.getLogger(ProxyServer.class.getName());
+    private static final org.apache.log4j.Logger logger = org.apache.log4j.Logger.getLogger(ProxyServer.class.getName());
     
-    static {
-//        CustomRecordFormatter formatter = new Cus
-    }
-    
-    static void log(String msg) {
-        logger.log(Level.SEVERE, msg);
-    }
+//    static {
+//        BasicConfigurator.configure();
+//    }
 
-    static void log(Throwable t) {
-        log(null, t);
+//    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(ProxyServer.class.getName());
+    
+    static void debug(String msg) {
+        logger.debug(msg);
     }
     
-    static void log(String msg, Throwable t) {
+    static void error(Throwable t) {
+        error(null, t);
+    }
+    
+    static void error(String msg, Throwable t) {
         if (StringUtils.isBlank(msg) && t != null) {
             msg = t.getMessage();
         }
-        logger.log(Level.SEVERE, msg, t);
+        logger.error(msg, t);
     }
 }
