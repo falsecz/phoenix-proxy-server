@@ -5,19 +5,16 @@
  */
 package com.socialbakers.phoenix.proxy.server;
 
+import static com.socialbakers.phoenix.proxy.server.Logger.log;
+
 import com.socialbakers.phoenix.proxy.PhoenixProxyProtos;
 import java.nio.channels.SelectionKey;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-import org.apache.commons.lang.StringUtils;
 
 /**
  *
  * @author robert
  */
 class RequestProcessor implements Runnable {
-
-    private static final Logger logger = Logger.getLogger(RequestProcessor.class.getName());
 
     private SelectionKey key;
     private PhoenixProxyProtos.QueryRequest queryRequest;
@@ -61,21 +58,6 @@ class RequestProcessor implements Runnable {
         } catch (Exception e) {
             log(e);
         }
-    }
-
-    private static void log(String msg) {
-        logger.log(Level.SEVERE, msg);
-    }
-
-    private static void log(Throwable t) {
-        log(null, t);
-    }
-
-    private static void log(String msg, Throwable t) {
-        if (StringUtils.isBlank(msg) && t != null) {
-            msg = t.getMessage();
-        }
-        logger.log(Level.SEVERE, msg, t);
     }
 
     interface SocketWriter {

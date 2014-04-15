@@ -1,5 +1,7 @@
 package com.socialbakers.phoenix.proxy.server;
 
+import static com.socialbakers.phoenix.proxy.server.Logger.log;
+
 import com.socialbakers.phoenix.proxy.PhoenixProxyProtos;
 import java.io.IOException;
 import java.net.InetAddress;
@@ -17,14 +19,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.RejectedExecutionHandler;
 import java.util.concurrent.ThreadPoolExecutor;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-import org.apache.commons.lang.StringUtils;
 
 public class ProxyServer {
 
-    private static final Logger logger = Logger.getLogger(ProxyServer.class.getName());
-    
     private InetAddress addr;
     private int port;
     private Selector selector;
@@ -112,11 +109,9 @@ public class ProxyServer {
 
 	// processing
 	while (true) {
-	    // wait for events
-//	    this.selector.select();
 
+            // wait for events
             int readyChannels = selector.select();
-
             if (readyChannels == 0) continue;
             
 	    // wakeup to work on selected keys
@@ -226,27 +221,12 @@ public class ProxyServer {
 	key.interestOps(SelectionKey.OP_READ);
     }
 
-    private void doEcho(SelectionKey key, byte[] data) {
-	SocketChannel channel = (SocketChannel) key.channel();
-	List<byte[]> pendingData = this.outgoingData.get(channel);
-	pendingData.add(data);
-	key.interestOps(SelectionKey.OP_WRITE);
-    }
-    
-    private static void log(String msg) {
-        logger.log(Level.SEVERE, msg);
-    }
-
-    private static void log(Throwable t) {
-        log(null, t);
-    }
-    
-    private static void log(String msg, Throwable t) {
-        if (StringUtils.isBlank(msg) && t != null) {
-            msg = t.getMessage();
-        }
-        logger.log(Level.SEVERE, msg, t);
-    }
+//    private void doEcho(SelectionKey key, byte[] data) {
+//	SocketChannel channel = (SocketChannel) key.channel();
+//	List<byte[]> pendingData = this.outgoingData.get(channel);
+//	pendingData.add(data);
+//	key.interestOps(SelectionKey.OP_WRITE);
+//    }
     
     private static final String C = "-c"; // core pool size
     private static final String M = "-m"; // max pool size
@@ -285,19 +265,14 @@ public class ProxyServer {
             keepAliveInMillis = Integer.valueOf(System.getenv(KE));
         }
         
-	if ((port == null || zooKeeper == null) && (args.length < 2)) {
-	    System.err.println("You must pass at least 2 required parameters: <port> <zooKeeper>");
-	    System.err.println("Optional parameters: " + C + "<corePoolSize> " 
-                    + M + "<maxPoolSize> " + Q + "<queueSize> " + K + "<keepAliveInMillis>");
-	    System.exit(1);
-	}
+        if (args.length > 0 && !args[0].startsWith("-")) {
+            port = Integer.valueOf(args[0]);
+        }
+        if (args.length > 1 && !args[1].startsWith("-")) {
+            zooKeeper = args[1];
+        }
         
-	port = Integer.valueOf(args[0]);
-	zooKeeper = args[1];
-        
-        
-        for (int i = 0; i < args.length; i++) {
-            String arg = args[i];
+        for (String arg : args) {
             if (arg.startsWith(C)) {
                 corePoolSize = Integer.valueOf(arg.replaceFirst(C, ""));
             } else if (arg.startsWith(M)) {
@@ -308,6 +283,19 @@ public class ProxyServer {
                 keepAliveInMillis = Integer.valueOf(arg.replaceFirst(K, ""));
             }
         }
+        
+        if (port == null || zooKeeper == null) {
+	    
+            System.err.println("You must pass at least 2 required parameters: <port> <zooKeeper>");
+            
+	    String optionalParams = "Optional parameters: %s<corePoolSize> %s<maxPoolSize> %s<queueSize> %s<keepAliveInMillis>";
+            System.err.println(String.format(optionalParams, C, M, Q, K));
+            
+            String defaultOptions = "Default options: %s%d %s%d %s%d %s%d";
+            System.err.println(String.format(defaultOptions, C, corePoolSize, M, maxPoolSize, Q, queueSize, K, keepAliveInMillis));
+            
+	    System.exit(1);
+	}
         
         ProxyServer proxyServer = new ProxyServer(null, port, zooKeeper, corePoolSize, maxPoolSize, 
                 keepAliveInMillis, queueSize);

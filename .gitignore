@@ -1,1 +1,8 @@
 /target
+.classpath
+.env
+.project
+.settings/
+nbactions.xml
+phoenix-proxy-server-1.0-SNAPSHOT-jar-with-dependencies.jar
+

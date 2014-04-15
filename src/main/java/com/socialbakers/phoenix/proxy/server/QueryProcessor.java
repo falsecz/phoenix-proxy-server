@@ -1,10 +1,6 @@
-/*
- * To change this license header, choose License Headers in Project Properties.
- * To change this template file, choose Tools | Templates
- * and open the template in the editor.
- */
 package com.socialbakers.phoenix.proxy.server;
 
+import static com.socialbakers.phoenix.proxy.server.Logger.log;
 import static com.socialbakers.phoenix.proxy.server.ValueTypeMapper.getColumnType;
 import static com.socialbakers.phoenix.proxy.server.ValueTypeMapper.getValue;
 
@@ -19,17 +15,12 @@ import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-import org.apache.commons.lang.StringUtils;
 
 /**
  *
  * @author robert
  */
 class QueryProcessor {
-    
-    private static final Logger logger = Logger.getLogger(QueryProcessor.class.getName());
     
     private Connection conn = null;
     private int connectionCounter = 0;
@@ -141,16 +132,5 @@ class QueryProcessor {
 //        DriverManager.registerDriver(new PhoenixDriver());
         conn = DriverManager.getConnection("jdbc:phoenix:" + zooKeeper);
         return conn;
-    }
-    
-    private static void log(String msg) {
-        logger.log(Level.SEVERE, msg);
-    }
-
-    private static void log(String msg, Throwable t) {
-        if (StringUtils.isBlank(msg) && t != null) {
-            msg = t.getMessage();
-        }
-        logger.log(Level.SEVERE, msg, t);
     }
 }
