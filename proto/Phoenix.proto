@@ -37,12 +37,12 @@ message QueryRequest {
 
 		required Type type = 3;
 		required string sql = 2;
-		repeated Param params
+		repeated Param params = 1;
 
 	}
 
 	required int32 call_id = 1;
-	repeated Query query = 2;
+	repeated Query queries = 2;
 }
 
 
