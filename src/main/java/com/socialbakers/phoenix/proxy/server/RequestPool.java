@@ -1,9 +1,3 @@
-/*
- * To change this license header, choose License Headers in Project Properties.
- * To change this template file, choose Tools | Templates
- * and open the template in the editor.
- */
-
 package com.socialbakers.phoenix.proxy.server;
 
 import java.util.concurrent.ArrayBlockingQueue;
@@ -13,18 +7,31 @@ import java.util.concurrent.RejectedExecutionHandler;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
-/**
- *
- * @author robert
- */
 class RequestPool extends ThreadPoolExecutor {
-
-    private RequestProcessor.SocketWriter writer;
     
-    RequestPool(int corePoolSize, int maximumPoolSize, long keepAliveTimeMs, int queueSize, 
-            RequestProcessor.SocketWriter writer, RejectedExecutionHandler rejectionHandler) {
+    private int queueSize;
+    
+    /**
+     * Creates a new {@code RequestPool} with the given initial
+     * parameters.
+     * @param corePoolSize the number of threads to keep in the pool, even
+     *        if they are idle, unless {@code allowCoreThreadTimeOut} is set
+     * @param maximumPoolSize the maximum number of threads to allow in the
+     *        pool
+     * @param keepAliveTime when the number of threads is greater than
+     *        the core, this is the maximum time in milliseconds that excess idle threads
+     *        will wait for new tasks before terminating.
+     * @param queueSize the capacity of queue
+     * @param rejectionHandler the handler to use when execution is blocked
+     *        because the thread bounds and queue capacities are reached
+     */
+    RequestPool(int corePoolSize, int maximumPoolSize, long keepAliveTimeMs, int queueSize,
+            RejectedExecutionHandler rejectionHandler) {
+        
         super(corePoolSize, maximumPoolSize, keepAliveTimeMs, TimeUnit.MILLISECONDS, 
                 new ArrayBlockingQueue<Runnable>(queueSize), Executors.defaultThreadFactory(), rejectionHandler);
+        
+        this.queueSize = queueSize;
     }
     
     /**
@@ -46,16 +53,27 @@ class RequestPool extends ThreadPoolExecutor {
     }
     
     /**
+     * Only {@link RequestProcessor} instance can be executed.
+     * @param r runnable command
+     */
+    @Override
+    public void execute(Runnable r) {
+        throw new UnsupportedOperationException("Only " + RequestProcessor.class.getName() 
+                + " instance can be executed.");
+    }
+
+    /**
      * Returns the count of commands waiting in queue.
      * @return the count of commands waiting in queue
      */
-    public int getCmdCountInQueue() {
+    int getCmdCountInQueue() {
         return getQueue().size();
     }
-    
-    @Override
-    public void execute(Runnable r) {
-        throw new UnsupportedOperationException("Only the " + RequestProcessor.class.getName() 
-                + " instance can be executed.");
+
+    /**
+     * @return queue size
+     */
+    int getQueueSize() {
+        return queueSize;
     }
 }

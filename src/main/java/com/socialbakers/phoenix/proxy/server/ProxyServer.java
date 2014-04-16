@@ -1,10 +1,11 @@
 package com.socialbakers.phoenix.proxy.server;
 
-import static com.socialbakers.phoenix.proxy.server.Logger.debug;
+import static com.socialbakers.phoenix.proxy.server.Logger.*;
 import static com.socialbakers.phoenix.proxy.server.Logger.error;
 
 import com.socialbakers.phoenix.proxy.PhoenixProxyProtos;
 import java.io.IOException;
+import java.lang.management.ManagementFactory;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
@@ -18,10 +19,13 @@ import java.sql.SQLException;
 import java.util.*;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.RejectedExecutionHandler;
 import java.util.concurrent.ThreadPoolExecutor;
+import javax.management.MBeanServer;
+import javax.management.ObjectName;
 
-public class ProxyServer {
+public class ProxyServer implements ProxyServerMBean {
 
     private InetAddress addr;
     private int port;
@@ -30,7 +34,13 @@ public class ProxyServer {
     private Map<SocketChannel, IncomingData> incomingData;
     private QueryProcessor queryProcessor;
     private RequestPool requestPool;
+    private long connectionCounter;
+    private long requestCounter;
+    private long rejectionCounter;
     
+    private static final String rejectionMsgFormat
+            = "Request rejected becuse of queue overflow. corePoolSize:%d maxPoolSize:%d active:%d inQueue:%d";
+
     private RequestProcessor.SocketWriter writer = new RequestProcessor.SocketWriter() {
         @Override
         public void write(SelectionKey key, byte[] data) {
@@ -58,26 +68,10 @@ public class ProxyServer {
     };
     
     private RejectedExecutionHandler rejectionHandler = new RejectedExecutionHandler() {
-        
-        static final String msgFormat = 
-                "Request rejected becuse of queue overflow. corePoolSize:%d maxPoolSize:%d active:%d inQueue:%d";
-
         @Override
         public void rejectedExecution(Runnable r, ThreadPoolExecutor executor) {
             RequestProcessor request = (RequestProcessor) r;
-            RequestPool pool = (RequestPool) executor;
-
-            int corePoolSize = pool.getCorePoolSize();
-            int maximumPoolSize = pool.getMaximumPoolSize();
-            int activeCount = pool.getActiveCount();
-            int inQueue = pool.getCmdCountInQueue();
-
-            String msg = String.format(msgFormat, corePoolSize, maximumPoolSize, activeCount, inQueue);
-            PhoenixProxyProtos.QueryResponse response = request.createExceptionResponse(msg);
-            byte[] bytes = response.toByteArray();
-
-            writer.write(request.getKey(), bytes);
-            debug(msg);
+            rejectRequest(request);
         }
     };
     
@@ -87,11 +81,11 @@ public class ProxyServer {
         this.addr = addr;
 	this.port = port;
 	this.requestPool = new RequestPool(corePoolSize, maximumPoolSize, keepAliveTimeMs, queueSize, 
-                writer, rejectionHandler);
+                rejectionHandler);
         
 	queryProcessor = new QueryProcessor(zooKeeper);
-	outgoingData = new HashMap<SocketChannel, List<byte[]>>();
-	incomingData = new HashMap<SocketChannel, IncomingData>();
+	outgoingData = new ConcurrentHashMap<SocketChannel, List<byte[]>>();
+	incomingData = new ConcurrentHashMap<SocketChannel, IncomingData>();
     }
 
     public void startServer() throws IOException {
@@ -132,14 +126,14 @@ public class ProxyServer {
 		    this.accept(key);
 		} else if (key.isReadable()) {
 		    this.read(key);
-		} else if (key.isWritable()) {
-		    this.write(key);
+//		} else if (key.isWritable()) {
+//		    this.write(key);
 		}
 	    }
 	}
     }
 
-    private void accept(SelectionKey key) throws IOException {
+    private synchronized void accept(SelectionKey key) throws IOException {
 	ServerSocketChannel serverChannel = (ServerSocketChannel) key.channel();
 	SocketChannel channel = serverChannel.accept();
 	channel.configureBlocking(false);
@@ -150,18 +144,21 @@ public class ProxyServer {
 
 	// register channel with selector for further IO
 	outgoingData.put(channel, new ArrayList<byte[]>());
+        incomingData.put(channel, new IncomingData());
 	channel.register(this.selector, SelectionKey.OP_READ);
+        connectionCounter++;
     }
 
-    private void read(SelectionKey key) throws IOException {
+    private synchronized void read(SelectionKey key) throws IOException {
 
 	SocketChannel channel = (SocketChannel) key.channel();
 	IncomingData message = incomingData.get(channel);
         
-	// new incoming message or continue incomplete message
         if (message == null) {
-            message = new IncomingData();
-            incomingData.put(channel, message);
+            SocketAddress adress = channel.socket().getRemoteSocketAddress();
+            error(new IllegalStateException("No message for channel " + adress));
+            closeChannel(key);
+            return;
         }
 	int bytesToRead = message.left();
 
@@ -183,10 +180,12 @@ public class ProxyServer {
 
 	if (message.isComplete()) {
             try {
-                incomingData.remove(channel);
+                // prepare new message for next read`
+                incomingData.put(channel, new IncomingData());
                 PhoenixProxyProtos.QueryRequest queryRequest = message.toQueryRequest();
                 RequestProcessor processor = new RequestProcessor(key, queryRequest, queryProcessor, writer);
                 requestPool.execute(processor);
+                requestCounter++;
             } catch (Exception e) {
                 error(e);
                 closeChannel(key);
@@ -194,13 +193,13 @@ public class ProxyServer {
 	}
     }
     
-    private void closeChannel(SelectionKey key) {
+    private synchronized void closeChannel(SelectionKey key) {
         SocketChannel channel = (SocketChannel) key.channel();
         this.outgoingData.remove(channel);
         this.incomingData.remove(channel);
         Socket socket = channel.socket();
         SocketAddress remoteAddr = socket.getRemoteSocketAddress();
-        debug("Connection closed by client: " + remoteAddr);
+        debug("Connection closed: " + remoteAddr);
         try {
             channel.close();
         } catch (IOException ex1) {
@@ -209,23 +208,42 @@ public class ProxyServer {
         key.cancel();
     }
     
-    private void write(SelectionKey key) throws IOException {
+    private synchronized void rejectRequest(RequestProcessor request) {
         
-	SocketChannel channel = (SocketChannel) key.channel();
-	List<byte[]> pendingData = this.outgoingData.get(channel);
-	Iterator<byte[]> items = pendingData.iterator();
+        rejectionCounter++;
+        requestCounter--;   // request not actualy processed but was counted
         
-        while (items.hasNext()) {
-            byte[] item = items.next();
-            items.remove();
-            ByteBuffer wrap = ByteBuffer.wrap(item);
-            while (wrap.hasRemaining()) {
-                channel.write(wrap);
-            }
-        }
+        int corePoolSize = requestPool.getCorePoolSize();
+        int maximumPoolSize = requestPool.getMaximumPoolSize();
+        int activeCount = requestPool.getActiveCount();
+        int inQueue = requestPool.getCmdCountInQueue();
 
-	key.interestOps(SelectionKey.OP_READ);
+        String msg = String.format(rejectionMsgFormat, corePoolSize, maximumPoolSize, activeCount, inQueue);
+        PhoenixProxyProtos.QueryResponse response = request.createExceptionResponse(msg);
+        byte[] bytes = response.toByteArray();
+
+        writer.write(request.getKey(), bytes);
+        debug(msg);
     }
+    
+//    
+//    private void write(SelectionKey key) throws IOException {
+//        
+//	SocketChannel channel = (SocketChannel) key.channel();
+//	List<byte[]> pendingData = this.outgoingData.get(channel);
+//	Iterator<byte[]> items = pendingData.iterator();
+//        
+//        while (items.hasNext()) {
+//            byte[] item = items.next();
+//            items.remove();
+//            ByteBuffer wrap = ByteBuffer.wrap(item);
+//            while (wrap.hasRemaining()) {
+//                channel.write(wrap);
+//            }
+//        }
+//
+//	key.interestOps(SelectionKey.OP_READ);
+//    }
 
 //    private void doEcho(SelectionKey key, byte[] data) {
 //	SocketChannel channel = (SocketChannel) key.channel();
@@ -234,18 +252,85 @@ public class ProxyServer {
 //	key.interestOps(SelectionKey.OP_WRITE);
 //    }
     
-    private static final String C = "-c"; // core pool size
-    private static final String M = "-m"; // max pool size
-    private static final String Q = "-q"; // queue size
-    private static final String K = "-k"; // keep alive time in milliseconds
+    @Override
+    public int getActiveConnections() {
+        return incomingData.size();
+    }
+
+    @Override
+    public int getActiveRequests() {
+        return requestPool.getActiveCount();
+    }
+
+    @Override
+    public int getRequestsInQueue() {
+        return requestPool.getCmdCountInQueue();
+    }
+
+    @Override
+    public int getPoolSize() {
+        return requestPool.getPoolSize();
+    }
+
+    @Override
+    public int getCorePoolSize() {
+        return requestPool.getCorePoolSize();
+    }
+
+    @Override
+    public int getMaxPoolSize() {
+        return requestPool.getMaximumPoolSize();
+    }
+
+    @Override
+    public int getQueueSize() {
+        return requestPool.getQueueSize();
+    }
+
+    @Override
+    public long getConnectionCount() {
+        return connectionCounter;
+    }
+
+    @Override
+    public long getRequestCount() {
+        return requestCounter;
+    }
+
+    @Override
+    public long getErrorCount() {
+        return getErrCount();
+    }
+
+    @Override
+    public long getRejectionCount() {
+        return rejectionCounter;
+    }
+    
+    @Override
+    public synchronized void resetCounters() {
+        resetErrCounter();
+        connectionCounter = 0;
+        requestCounter = 0;
+        rejectionCounter = 0;
+    }
 
     
+    // ----------------------------------------------- STATIC MAIN -------------------------------------------------- //
+
+    // Environment variables
     private static final String ZE = "PHOENIX_ZK";      // zooKeeper jdbc url
     private static final String PE = "PORT";            // port
     private static final String CE = "CORE_POOL_SIZE";  // core pool size
     private static final String ME = "MAX_POOL_SIZE";   // max pool size
     private static final String QE = "QUEUE_SIZE";      // queue size
     private static final String KE = "KEEP_ALIVE_TIME"; // keep alive time in milliseconds
+    
+    // Program parameters (Overides Env vars)
+    private static final String C = "-c"; // core pool size
+    private static final String M = "-m"; // max pool size
+    private static final String Q = "-q"; // queue size
+    private static final String K = "-k"; // keep alive time in milliseconds
 
     
     public static void main(String[] args) throws Exception {
@@ -305,6 +390,12 @@ public class ProxyServer {
         
         ProxyServer proxyServer = new ProxyServer(null, port, zooKeeper, corePoolSize, maxPoolSize, 
                 keepAliveInMillis, queueSize);
+        
+        MBeanServer mbs = ManagementFactory.getPlatformMBeanServer();
+        ObjectName name = new ObjectName("com.socialbakers.phoenix.proxy.server:type=ProxyServerMBean");
+        mbs.registerMBean(proxyServer, name);
+        
         proxyServer.startServer();
     }
+
 }
