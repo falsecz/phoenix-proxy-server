@@ -6,7 +6,7 @@ import static com.socialbakers.phoenix.proxy.server.ValueTypeMapper.getColumnTyp
 import static com.socialbakers.phoenix.proxy.server.ValueTypeMapper.getValue;
 
 import com.google.protobuf.ByteString;
-import com.salesforce.phoenix.jdbc.PhoenixDriver;
+import org.apache.phoenix.jdbc.PhoenixDriver;
 import com.socialbakers.phoenix.proxy.PhoenixProxyProtos.DataType;
 import com.socialbakers.phoenix.proxy.PhoenixProxyProtos;
 import com.socialbakers.phoenix.proxy.PhoenixProxyProtos.QueryRequest.Query.Type;
