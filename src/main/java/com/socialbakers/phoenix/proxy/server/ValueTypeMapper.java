@@ -291,13 +291,13 @@ public class ValueTypeMapper {
     }
 
     private static Time getTime(byte[] bytes) {
-        checkSize(bytes, "date", LONG_SIZE);
+        checkSize(bytes, "time", LONG_SIZE);
         long longValue = ByteBuffer.wrap(bytes).getLong();
         return new Time(longValue);
     }
 
     private static Timestamp getTimeStamp(byte[] bytes) {
-        checkSize(bytes, "date", LONG_SIZE + INT_SIZE);
+        checkSize(bytes, "timestamp", LONG_SIZE + INT_SIZE);
         ByteBuffer wrap = ByteBuffer.wrap(bytes);
         long timeValue = wrap.getLong();
         int nanoValue = wrap.getInt();
