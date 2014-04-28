@@ -58,7 +58,7 @@ class QueryProcessor {
 
                 PreparedStatement preparedStatement = con.prepareStatement(sql);
                 ValueTypeMapper.setPrepareStatementParameters(preparedStatement, query.getParamsList());
-
+                
                 Result.Builder resultBuilder = Result.newBuilder();
                 if (type == Type.UPDATE) {
 

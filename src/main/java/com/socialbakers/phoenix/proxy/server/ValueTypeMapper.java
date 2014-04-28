@@ -136,6 +136,31 @@ public class ValueTypeMapper {
     }
     
     
+    static int getColumnType(DataType type) {
+
+        switch (type) {
+            case INTEGER: return Types.INTEGER; 
+            case BIGINT: return Types.BIGINT;
+            case TINYINT: return Types.TINYINT;
+            case SMALLINT: return Types.SMALLINT;
+            case FLOAT: return Types.FLOAT;
+            case DOUBLE: return Types.DOUBLE;
+            case DECIMAL: return Types.DECIMAL;
+            case BOOLEAN: return Types.BOOLEAN;
+            case DATE: return Types.DATE;
+            case TIME: return Types.TIME;
+            case TIMESTAMP: return Types.TIMESTAMP;
+            case VARCHAR: return Types.VARCHAR;
+            case CHAR: return Types.CHAR;
+            case BINARY: return Types.BINARY;
+            case VARBINARY: return Types.VARBINARY;
+
+            default:
+                throw new IllegalStateException("Missing mapping for type " + type);
+        }
+    }
+    
+    
     static void setPrepareStatementParameters(PreparedStatement preparedStatement, List<Param> params) 
             throws SQLException {
 
@@ -144,6 +169,12 @@ public class ValueTypeMapper {
             Param param = params.get(i);
             int parametrIndex = i + 1;
             byte[] bytes = param.getBytes().toByteArray();
+            
+            if (bytes.length == 0) {
+                int columnType = getColumnType(param.getType());
+                preparedStatement.setNull(parametrIndex, columnType);
+                continue;
+            }
             
             switch (param.getType()) {
                 case INTEGER:
