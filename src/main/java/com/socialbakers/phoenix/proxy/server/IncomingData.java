@@ -10,7 +10,9 @@ import org.eclipse.jdt.internal.core.Assert;
  * @author robert
  */
 class IncomingData {
-
+    
+    static int maxRequestLen = 10 * 1024 * 1024;
+    
     /**
      * Flag for length of request was read.
      * If its false message is in state1 - waiting for read the length of message.
@@ -60,6 +62,14 @@ class IncomingData {
             // just read len of data - state1 -> state2
             ByteBuffer wrapped = ByteBuffer.wrap(data);
 	    len = wrapped.getInt();
+            
+            if (len <= 0) {
+                throw new IllegalStateException("Message length must be greater than zero!");
+            } else if (len > maxRequestLen) {
+                throw new IllegalStateException(String.format("Message length must be lower or equal than %d!", 
+                        maxRequestLen));
+            }
+
             data = new byte[len];
             read = 0;
             lenRead = true;

@@ -27,5 +27,11 @@ public interface ProxyServerMBean {
     long getRejectionCount();
     
     
+    void setMaxRequestLen(int maxRequestLen);
+    
+    int getMaxRequestLen();
+    
+    
     void resetCounters();
+    
 }
