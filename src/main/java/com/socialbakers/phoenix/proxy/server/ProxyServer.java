@@ -37,7 +37,6 @@ public class ProxyServer implements ProxyServerMBean {
     private long connectionCounter;
     private long requestCounter;
     private long rejectionCounter;
-    private int maxRequestLen = 10 * 1024 * 1024; // 10MB
     
     private static final String rejectionMsgFormat
             = "Request rejected becuse of queue overflow. corePoolSize:%d maxPoolSize:%d active:%d inQueue:%d";
@@ -226,32 +225,8 @@ public class ProxyServer implements ProxyServerMBean {
         writer.write(request.getKey(), bytes);
         debug(msg);
     }
-    
-//    
-//    private void write(SelectionKey key) throws IOException {
-//        
-//	SocketChannel channel = (SocketChannel) key.channel();
-//	List<byte[]> pendingData = this.outgoingData.get(channel);
-//	Iterator<byte[]> items = pendingData.iterator();
-//        
-//        while (items.hasNext()) {
-//            byte[] item = items.next();
-//            items.remove();
-//            ByteBuffer wrap = ByteBuffer.wrap(item);
-//            while (wrap.hasRemaining()) {
-//                channel.write(wrap);
-//            }
-//        }
-//
-//	key.interestOps(SelectionKey.OP_READ);
-//    }
 
-//    private void doEcho(SelectionKey key, byte[] data) {
-//	SocketChannel channel = (SocketChannel) key.channel();
-//	List<byte[]> pendingData = this.outgoingData.get(channel);
-//	pendingData.add(data);
-//	key.interestOps(SelectionKey.OP_WRITE);
-//    }
+    // ---------------------------------------------- JMX Interface ------------------------------------------------- //
     
     @Override
     public int getActiveConnections() {
@@ -310,13 +285,22 @@ public class ProxyServer implements ProxyServerMBean {
     
     @Override
     public void setMaxRequestLen(int maxRequestLen) {
-        this.maxRequestLen = maxRequestLen;
         IncomingData.maxRequestLen = maxRequestLen;
     }
 
     @Override
     public int getMaxRequestLen() {
-        return maxRequestLen;
+        return IncomingData.maxRequestLen;
+    }
+    
+    @Override
+    public void setMaxRetries(int maxRetries) {
+        QueryProcessor.maxRetries = maxRetries;
+    }
+
+    @Override
+    public int getMaxRetries() {
+        return QueryProcessor.maxRetries;
     }
     
     @Override
@@ -338,6 +322,7 @@ public class ProxyServer implements ProxyServerMBean {
     private static final String QE = "QUEUE_SIZE";      // queue size
     private static final String KE = "KEEP_ALIVE_TIME"; // keep alive time in milliseconds
     private static final String RE = "MAX_REQUEST_LEN"; // maximum length of request message in bytes
+    private static final String TE = "MAX_CONN_RETRIES";// maximum retries to get zooKeeper connection
     
     // Program parameters (Overides Env vars)
     private static final String C = "-c"; // core pool size
@@ -345,7 +330,7 @@ public class ProxyServer implements ProxyServerMBean {
     private static final String Q = "-q"; // queue size
     private static final String K = "-k"; // keep alive time in milliseconds
     private static final String R = "-r"; // maximum length of request message in bytes
-    
+    private static final String T = "-t"; // maximum retries to get zooKeeper connection
 
     
     public static void main(String[] args) throws Exception {
@@ -356,7 +341,6 @@ public class ProxyServer implements ProxyServerMBean {
         int maxPoolSize = 128;
         int queueSize = 20000;
         int keepAliveInMillis = 20000;
-        int maxRequestLen = 10*1024*1024; // 10 MB
         
         if (System.getenv(ZE) != null) {            
             zooKeeper = System.getenv(ZE);
@@ -370,6 +354,10 @@ public class ProxyServer implements ProxyServerMBean {
             queueSize = Integer.valueOf(System.getenv(QE));
         } else if (System.getenv(KE) != null) {
             keepAliveInMillis = Integer.valueOf(System.getenv(KE));
+        } else if (System.getenv(RE) != null) {
+            IncomingData.maxRequestLen = Integer.valueOf(System.getenv(RE));
+        } else if (System.getenv(TE) != null) {
+            QueryProcessor.maxRetries = Integer.valueOf(System.getenv(TE));
         }
         
         if (args.length > 0 && !args[0].startsWith("-")) {
@@ -388,6 +376,10 @@ public class ProxyServer implements ProxyServerMBean {
                 queueSize = Integer.valueOf(arg.replaceFirst(Q, ""));
             } else if (arg.startsWith(K)) {
                 keepAliveInMillis = Integer.valueOf(arg.replaceFirst(K, ""));
+            } else if (arg.startsWith(R)) {
+                IncomingData.maxRequestLen = Integer.valueOf(arg.replaceFirst(R, ""));
+            } else if (arg.startsWith(T)) {
+                QueryProcessor.maxRetries = Integer.valueOf(arg.replaceFirst(T, ""));
             }
         }
         
@@ -396,23 +388,21 @@ public class ProxyServer implements ProxyServerMBean {
             System.err.println("You must pass at least 2 required parameters: <port> <zooKeeper>");
             
 	    String optionalParams = "Optional parameters: %s<corePoolSize> %s<maxPoolSize> %s<queueSize> "
-                    + "%s<keepAliveInMillis> %s<maxRequestLen>";
-            System.err.println(String.format(optionalParams, C, M, Q, K, R));
+                    + "%s<keepAliveInMillis> %s<maxRequestLen> %s<maxRetries>";
+            System.err.println(String.format(optionalParams, C, M, Q, K, R, T));
             
-            String defaultOptions = "Default options: %s%d %s%d %s%d %s%d %s%d";
+            String defaultOptions = "Default options: %s%d %s%d %s%d %s%d %s%d %s%d";
             System.err.println(String.format(defaultOptions, C, corePoolSize, M, maxPoolSize, Q, queueSize, 
-                    K, keepAliveInMillis, R, maxRequestLen));
+                    K, keepAliveInMillis, R, IncomingData.maxRequestLen, T, QueryProcessor.maxRetries));
             
 	    System.exit(1);
 	}
         
-        testXmx(maxRequestLen, corePoolSize);
+        testXmx(corePoolSize);
         
         ProxyServer proxyServer = new ProxyServer(null, port, zooKeeper, corePoolSize, maxPoolSize, 
                 keepAliveInMillis, queueSize);
 
-        proxyServer.setMaxRequestLen(maxRequestLen);
-        
         MBeanServer mbs = ManagementFactory.getPlatformMBeanServer();
         ObjectName name = new ObjectName("com.socialbakers.phoenix.proxy.server:type=ProxyServerMBean");
         mbs.registerMBean(proxyServer, name);
@@ -420,9 +410,9 @@ public class ProxyServer implements ProxyServerMBean {
         proxyServer.startServer();
     }
     
-    private static void testXmx(int maxRequestLen, int corePoolSize) {
-        debug(String.format("Max request len is %dbytes", maxRequestLen));
-        long m = maxRequestLen * corePoolSize;
+    private static void testXmx(int corePoolSize) {
+        debug(String.format("Max request len is %dbytes", IncomingData.maxRequestLen));
+        long m = IncomingData.maxRequestLen * corePoolSize;
         long m2 = Runtime.getRuntime().maxMemory();
         if (m > m2) {
             String msg = "Max request len is too high. Increase heap space with jvm param -Xmx<megabytes>m option."

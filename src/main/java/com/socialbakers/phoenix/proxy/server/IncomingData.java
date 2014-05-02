@@ -11,7 +11,7 @@ import org.eclipse.jdt.internal.core.Assert;
  */
 class IncomingData {
     
-    static int maxRequestLen = 10 * 1024 * 1024;
+    static int maxRequestLen = 10 * 1024 * 1024; // 10 MB
     
     /**
      * Flag for length of request was read.

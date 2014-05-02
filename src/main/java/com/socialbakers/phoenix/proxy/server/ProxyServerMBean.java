@@ -31,6 +31,10 @@ public interface ProxyServerMBean {
     
     int getMaxRequestLen();
     
+    void setMaxRetries(int maxRetries);
+    
+    int getMaxRetries();
+    
     
     void resetCounters();
     

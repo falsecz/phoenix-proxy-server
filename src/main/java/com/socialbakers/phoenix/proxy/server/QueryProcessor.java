@@ -26,7 +26,9 @@ import java.util.concurrent.BlockingQueue;
 
 class QueryProcessor {
     
-    private Connection conn = null;
+    static int maxRetries = 3;
+    
+//    private Connection conn = null;
     private int connectionCounter = 0;
     private String zooKeeper;  //= "hadoops-master.us-w2.aws.ccl";
     private BlockingQueue<Runnable> linkedBlockingDeque;
@@ -129,33 +131,23 @@ class QueryProcessor {
     }
 
     private Connection getConnection() throws SQLException {
-//        if (conn != null) {
-//            connectionCounter++;
-//
-//            //create new connection
-//            if (connectionCounter == 500) {
-//                new Thread(new Runnable() {
-//                    @Override
-//                    public void run() {
-//                        try {
-//                            System.out.println("creating new connection");
-//                            Connection c = DriverManager.getConnection("jdbc:phoenix:" + zooKeeper);
-//                            System.out.println("new connection created");
-//
-//                            conn = c;
-//                            connectionCounter = 0;
-//                        } catch (SQLException ex) {
-//                            log(null, ex);
-//                        }
-//                    }
-//                }).start();
-//            }
-//
-//            return conn;
-//        }
-
-//        DriverManager.registerDriver(new PhoenixDriver());
-        conn = DriverManager.getConnection("jdbc:phoenix:" + zooKeeper);
+        
+        Connection conn = null;
+        int tries = 0;
+        
+        while (conn == null) {
+            tries++;
+            try {
+                conn = DriverManager.getConnection("jdbc:phoenix:" + zooKeeper);
+            } catch (IllegalStateException e) {
+                debug("Getting zooKeeper connection failed on " + tries + "/" + maxRetries 
+                        + " try. Exception msg:'" + e.getMessage() + "'.");
+                if (tries >= maxRetries) {
+                    throw e;
+                }
+             }
+        }
+        
         return conn;
     }
 }
