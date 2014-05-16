@@ -90,7 +90,7 @@ public class LoggingFilter extends IoFilterAdapter {
 	@Override
 	public void exceptionCaught(NextFilter nextFilter, IoSession session, Throwable cause) throws Exception {
 		if (cause instanceof IOException && "Connection reset by peer".equals(cause.getMessage())) {
-			log(LogLevel.TRACE, "Connection reset by peer: {}", session.getRemoteAddress());
+			log(LogLevel.WARN, "Connection reset by peer: {}", session.getRemoteAddress());
 		} else {
 			log(exceptionCaughtLevel, "EXCEPTION :", cause);
 		}

@@ -7,7 +7,7 @@ import java.net.Socket;
 public class ConnectionBenchmarkTest {
 
 	private static final int REQ_COUNT = 4; // number of requests in one connection
-	private static final int CONN_COUNT = 64; // number of connections in one client thread
+	private static final int CONN_COUNT = 64; // number of serial connections in one client thread
 	private static final int THREAD_COUNT = 16; // number of parallel client threads
 
 	private static final byte[] COMPLETE_MSG = new byte[] { 0x00, 0x00, 0x00, 0x02, 0x08, 0x01 };

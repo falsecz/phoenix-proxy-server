@@ -5,6 +5,8 @@ import java.util.concurrent.ThreadPoolExecutor;
 
 import org.apache.mina.filter.executor.IoEventQueueThrottle;
 
+import com.socialbakers.phoenix.proxy.Configuration;
+
 public class Jmx implements JmxMBean {
 
 	private Configuration conf;
@@ -12,8 +14,7 @@ public class Jmx implements JmxMBean {
 	private IoEventQueueThrottle queueHandler;
 	private RequestHandler requestHandler;
 
-	public Jmx(Configuration conf, Executor executor, IoEventQueueThrottle queueHandler,
-			RequestHandler requestHandler) {
+	public Jmx(Configuration conf, Executor executor, IoEventQueueThrottle queueHandler, RequestHandler requestHandler) {
 		super();
 		this.conf = conf;
 		this.executor = executor;

@@ -20,7 +20,8 @@ import org.apache.mina.transport.socket.nio.NioSocketAcceptor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.socialbakers.phoenix.proxy.server.Configuration.ConfigurationException;
+import com.socialbakers.config.exception.ConfigurationException;
+import com.socialbakers.phoenix.proxy.Configuration;
 
 public class ProxyServer {
 
@@ -40,7 +41,7 @@ public class ProxyServer {
 
 			IoEventQueueThrottle queueHandler = new IoEventQueueThrottle(conf.getQueueSize());
 			ExecutorFilter threadPoolExecutor = new ExecutorFilter(conf.getCorePoolSize(), conf.getMaxPoolSize(),
-					conf.getKeepAliveInMillis(), TimeUnit.MILLISECONDS, queueHandler);
+					conf.getKeepAliveTime(), TimeUnit.MILLISECONDS, queueHandler);
 			filterChain.addLast("executor", threadPoolExecutor);
 
 			RequestHandler requestHandler = new RequestHandler(new QueryProcessor(conf.getZooKeeper()));

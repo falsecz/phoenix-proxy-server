@@ -35,6 +35,7 @@ public class RequestHandler extends IoHandlerAdapter {
 
 		synchronized (this) {
 			if (cause instanceof IOException && "Connection reset by peer".equals(cause.getMessage())) {
+				// nothing to do with peer
 				return;
 			} else if (cause instanceof RejectedExecutionException) {
 				rejectionsCounter++;
@@ -104,33 +105,24 @@ public class RequestHandler extends IoHandlerAdapter {
 
 	@Override
 	public void messageSent(IoSession session, Object message) throws Exception {
-
 		synchronized (this) {
 			activeRequestsCounter--;
 		}
-
-		super.messageSent(session, message);
 	}
 
 	@Override
 	public void sessionClosed(IoSession session) throws Exception {
-
 		synchronized (this) {
 			activeConnectionsCounter--;
 		}
-
-		super.sessionClosed(session);
 	}
 
 	@Override
 	public void sessionOpened(IoSession session) throws Exception {
-
 		synchronized (this) {
 			activeConnectionsCounter++;
 			allConnectionsCounter++;
 		}
-
-		super.sessionOpened(session);
 	}
 
 	public synchronized void setAllConnectionsCounter(int allConnectionsCounter) {

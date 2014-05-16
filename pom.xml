@@ -19,6 +19,7 @@
 
 	<properties>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+		<easy-config.version>0.2-SNAPSHOT</easy-config.version>
 	</properties>
 
 	<dependencies>
@@ -53,6 +54,11 @@
 			<version>2.0.7</version>
 		</dependency>
 
+		<dependency>
+			<groupId>com.socialbakers</groupId>
+			<artifactId>easy-config-maven-plugin</artifactId>
+			<version>${easy-config.version}</version>
+		</dependency>
 	</dependencies>
 
 
@@ -82,15 +88,6 @@
 			</plugin>
 
 			<plugin>
-				<artifactId>maven-compiler-plugin</artifactId>
-				<version>3.0</version>
-				<configuration>
-					<source>1.6</source>
-					<target>1.6</target>
-				</configuration>
-			</plugin>
-
-			<plugin>
 				<artifactId>maven-assembly-plugin</artifactId>
 				<configuration>
 					<archive>
@@ -114,6 +111,94 @@
 			</plugin>
 
 			<plugin>
+				<groupId>com.socialbakers</groupId>
+				<artifactId>easy-config-maven-plugin</artifactId>
+				<version>${easy-config.version}</version>
+				<configuration>
+					<!-- <outputDir>/tmp</outputDir> -->
+					<targetClass>com.socialbakers.phoenix.proxy.Configuration</targetClass>
+					<abstract>false</abstract>
+					<params>
+						<param>
+							<name>zooKeeper</name>
+							<order>1</order>
+							<env>PHOENIX_ZK</env>
+							<description>Zookeeper connection string</description>
+							<javaType>String</javaType>
+							<required>true</required>
+						</param>
+						<param>
+							<name>port</name>
+							<order>0</order>
+							<env>PORT</env>
+							<description>Listening port</description>
+							<javaType>Integer</javaType>
+							<required>true</required>
+						</param>
+						<param>
+							<name>corePoolSize</name>
+							<option>c</option>
+							<env>CORE_POOL_SIZE</env>
+							<description>Core size of thread pool</description>
+							<javaType>int</javaType>
+							<defaultValue>32</defaultValue>
+						</param>
+						<param>
+							<name>maxPoolSize</name>
+							<option>m</option>
+							<env>MAX_POOL_SIZE</env>
+							<description>Maximum size of thread pool</description>
+							<javaType>int</javaType>
+							<defaultValue>64</defaultValue>
+						</param>
+						<param>
+							<name>queueSize</name>
+							<option>q</option>
+							<env>QUEUE_SIZE</env>
+							<description>Size of thread queue</description>
+							<javaType>int</javaType>
+							<defaultValue>65384</defaultValue>
+						</param>
+						<param>
+							<name>keepAliveTime</name>
+							<option>k</option>
+							<env>KEEP_ALIVE_TIME</env>
+							<description>Time in millisecond to keep alive idle connection
+								thread</description>
+							<javaType>int</javaType>
+							<defaultValue>60000</defaultValue>
+						</param>
+						<param>
+							<name>maxRequestLen</name>
+							<option>r</option>
+							<env>MAX_REQUEST_LEN</env>
+							<description>Maximum length of request message in bytes</description>
+							<javaType>int</javaType>
+							<defaultValue>10485760</defaultValue>
+						</param>
+						<param>
+							<name>maxConnRetries</name>
+							<option>t</option>
+							<env>MAX_CONN_RETRIES</env>
+							<description>Maximum retries attempts to get zooKeeper connection</description>
+							<javaType>int</javaType>
+							<defaultValue>3</defaultValue>
+						</param>
+
+					</params>
+				</configuration>
+				<executions>
+					<execution>
+						<phase>generate-sources</phase>
+						<goals>
+							<goal>generate-config</goal>
+						</goals>
+					</execution>
+				</executions>
+			</plugin>
+
+			<plugin>
+				<version>1.2</version>
 				<groupId>org.codehaus.mojo</groupId>
 				<artifactId>build-helper-maven-plugin</artifactId>
 				<executions>
@@ -126,9 +211,19 @@
 							<sources>
 								<source>${project.build.directory}/generated-sources</source>
 							</sources>
+							<jdkLevel>1.7</jdkLevel>
 						</configuration>
 					</execution>
 				</executions>
+			</plugin>
+
+			<plugin>
+				<artifactId>maven-compiler-plugin</artifactId>
+				<version>3.0</version>
+				<configuration>
+					<source>1.7</source>
+					<target>1.7</target>
+				</configuration>
 			</plugin>
 		</plugins>
 	</build>
