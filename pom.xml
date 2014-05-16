@@ -163,8 +163,7 @@
 							<name>keepAliveTime</name>
 							<option>k</option>
 							<env>KEEP_ALIVE_TIME</env>
-							<description>Time in millisecond to keep alive idle connection
-								thread</description>
+							<description>Time in millisecond to keep alive idle connection thread</description>
 							<javaType>int</javaType>
 							<defaultValue>60000</defaultValue>
 						</param>
