@@ -19,7 +19,7 @@
 
 	<properties>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-		<easy-config.version>0.2-SNAPSHOT</easy-config.version>
+		<easy-config.version>0.2</easy-config.version>
 	</properties>
 
 	<dependencies>
