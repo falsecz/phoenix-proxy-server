@@ -19,7 +19,7 @@
 
 	<properties>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-		<easy-config.version>0.2</easy-config.version>
+		<easy-config.version>0.3</easy-config.version>
 	</properties>
 
 	<dependencies>
@@ -116,8 +116,12 @@
 				<version>${easy-config.version}</version>
 				<configuration>
 					<!-- <outputDir>/tmp</outputDir> -->
-					<targetClass>com.socialbakers.phoenix.proxy.Configuration</targetClass>
+					<configClass>com.socialbakers.phoenix.proxy.Configuration</configClass>
 					<abstract>false</abstract>
+					<configFileDefault>phoenix-proxy-default.xml</configFileDefault>
+					<configFileSite>phoenix-proxy-site.xml</configFileSite>
+					<helpName>phoenix-proxy</helpName>
+					<helpDescription>phoenix-proxy is a ... </helpDescription>
 					<params>
 						<param>
 							<name>zooKeeper</name>
