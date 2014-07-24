@@ -14,6 +14,7 @@ import javax.management.ObjectName;
 
 import org.apache.mina.core.filterchain.DefaultIoFilterChainBuilder;
 import org.apache.mina.core.service.IoAcceptor;
+import org.apache.mina.core.session.IdleStatus;
 import org.apache.mina.filter.executor.ExecutorFilter;
 import org.apache.mina.filter.executor.IoEventQueueThrottle;
 import org.apache.mina.transport.socket.nio.NioSocketAcceptor;
@@ -44,12 +45,13 @@ public class ProxyServer {
 					conf.getKeepAliveTime(), TimeUnit.MILLISECONDS, queueHandler);
 			filterChain.addLast("executor", threadPoolExecutor);
 
-			RequestHandler requestHandler = new RequestHandler(new QueryProcessor(conf.getZooKeeper()));
+			RequestHandler requestHandler = new RequestHandler(conf);
 			acceptor.setHandler(requestHandler);
 
 			registerJmx(conf, queueHandler, threadPoolExecutor.getExecutor(), requestHandler);
 
 			acceptor.bind(new InetSocketAddress(conf.getPort()));
+			acceptor.getSessionConfig().setIdleTime(IdleStatus.BOTH_IDLE, 5);
 
 			LOGGER.info("Listening on 0.0.0.0:" + conf.getPort());
 
