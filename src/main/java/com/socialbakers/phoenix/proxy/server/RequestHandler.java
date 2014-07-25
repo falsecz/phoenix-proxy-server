@@ -1,9 +1,15 @@
 package com.socialbakers.phoenix.proxy.server;
 
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.sql.SQLException;
-import java.util.concurrent.ArrayBlockingQueue;
+import java.util.Comparator;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.RejectedExecutionHandler;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -23,6 +29,27 @@ public class RequestHandler extends IoHandlerAdapter {
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(RequestHandler.class);
 
+	private static int getPriority(Runnable r) {
+		PriorityRejectableTask task = getPRTaskFromRunnable(r);
+		if (task == null) {
+			return 0;
+		}
+		return task.getPriority();
+	}
+
+	private static PriorityRejectableTask getPRTaskFromRunnable(Runnable r) {
+		if (r instanceof PriorityRejectableTask) {
+			return (PriorityRejectableTask) r;
+		} else if (r instanceof FutureTask) {
+			try {
+				callableField.get(r);
+			} catch (Exception e) {
+				return null;
+			}
+		}
+		return null;
+	}
+
 	private QueryProcessor queryProcessor;
 
 	private int activeConnectionsCounter = 0;
@@ -33,18 +60,65 @@ public class RequestHandler extends IoHandlerAdapter {
 	private int errorCounter = 0;
 
 	private ThreadPoolExecutor executor;
+	private PriorityBlockingQueue<Runnable> queue;
+
+	private static final Field callableField;
+
+	static {
+		try {
+			callableField = FutureTask.class.getDeclaredField("callable");
+			callableField.setAccessible(true);
+		} catch (Exception e) {
+			throw new IllegalStateException(e);
+		}
+	}
 
 	public RequestHandler(Configuration conf) throws SQLException {
-		this.queryProcessor = new QueryProcessor(conf.getZooKeeper());
 		RejectedExecutionHandler rejectedExecutionHandler = new RejectedExecutionHandler() {
 			@Override
 			public void rejectedExecution(Runnable r, ThreadPoolExecutor executor) {
-				((RejectableRunnable) r).reject();
+				PriorityRejectableTask task = getPRTaskFromRunnable(r);
+				if (task != null) {
+					task.reject();
+				}
 			}
 		};
+
+		Comparator<Runnable> priorityComparator = new Comparator<Runnable>() {
+			@Override
+			public int compare(Runnable o1, Runnable o2) {
+				return getPriority(o2) - getPriority(o1);
+			}
+		};
+
+		this.queue = new PriorityBlockingQueue<Runnable>(conf.getQueueSize(), priorityComparator);
+
 		this.executor = new ThreadPoolExecutor(conf.getCorePoolSize(), conf.getMaxPoolSize(), conf.getKeepAliveTime(),
-				TimeUnit.SECONDS, new ArrayBlockingQueue<Runnable>(conf.getQueueSize()),
-				Executors.defaultThreadFactory(), rejectedExecutionHandler);
+				TimeUnit.SECONDS, queue, Executors.defaultThreadFactory(), rejectedExecutionHandler) {
+
+			@Override
+			protected void afterExecute(Runnable r, Throwable t) {
+				if (t == null && r instanceof Future<?>) {
+					try {
+						Future<?> future = (Future<?>) r;
+						if (future.isDone()) {
+							future.get();
+						}
+					} catch (CancellationException ce) {
+						t = ce;
+					} catch (ExecutionException ee) {
+						t = ee.getCause();
+					} catch (InterruptedException ie) {
+						Thread.currentThread().interrupt(); // ignore/reset
+					}
+				}
+				if (t != null) {
+					LOGGER.error(t.getMessage(), t);
+				}
+			}
+
+		};
+		this.queryProcessor = new QueryProcessor(conf.getZooKeeper(), executor);
 	}
 
 	@Override
@@ -98,8 +172,16 @@ public class RequestHandler extends IoHandlerAdapter {
 		return errorCounter;
 	}
 
+	public ThreadPoolExecutor getExecutor() {
+		return executor;
+	}
+
 	public synchronized int getRejectionsCounter() {
 		return rejectionsCounter;
+	}
+
+	public int getTaskCountInQueue() {
+		return queue.size();
 	}
 
 	@Override
@@ -112,7 +194,7 @@ public class RequestHandler extends IoHandlerAdapter {
 
 		PhoenixProxyProtos.QueryRequest request = (PhoenixProxyProtos.QueryRequest) message;
 
-		RejectableRunnable runnable = new RejectableRunnable(session, request);
+		RequestTask runnable = new RequestTask(session, request);
 		executor.execute(runnable);
 	}
 
@@ -154,13 +236,36 @@ public class RequestHandler extends IoHandlerAdapter {
 		this.rejectionsCounter = rejectionsCounter;
 	}
 
-	private class RejectableRunnable implements Runnable {
+	private class RequestTask implements Runnable, PriorityRejectableTask {
+
 		private IoSession session;
 		private PhoenixProxyProtos.QueryRequest request;
+		private int priority;
 
-		private RejectableRunnable(IoSession session, PhoenixProxyProtos.QueryRequest request) {
+		private RequestTask(IoSession session, PhoenixProxyProtos.QueryRequest request) {
 			this.session = session;
 			this.request = request;
+			// zero priority for batch requests, max(2) priority to single query requests.
+			// batch queries in already started tasks has priority 1
+			this.priority = request.getQueriesCount() < 2 ? 2 : 0;
+		}
+
+		@Override
+		public int getPriority() {
+			return priority;
+		}
+
+		@Override
+		public void reject() {
+			PhoenixProxyProtos.QueryResponse.Builder responseBuilder = PhoenixProxyProtos.QueryResponse.newBuilder();
+			QueryException exception = QueryException.newBuilder().setMessage("Rejected request").build();
+			responseBuilder.setException(exception);
+			responseBuilder.setCallId(request.getCallId());
+			PhoenixProxyProtos.QueryResponse response = responseBuilder.build();
+
+			synchronized (session) {
+				session.write(response);
+			}
 		}
 
 		@Override
@@ -181,18 +286,6 @@ public class RequestHandler extends IoHandlerAdapter {
 				allRequestsCounter++;
 			}
 			return queryProcessor.sendQuery(request);
-		}
-
-		private void reject() {
-			PhoenixProxyProtos.QueryResponse.Builder responseBuilder = PhoenixProxyProtos.QueryResponse.newBuilder();
-			QueryException exception = QueryException.newBuilder().setMessage("Rejected request").build();
-			responseBuilder.setException(exception);
-			responseBuilder.setCallId(request.getCallId());
-			PhoenixProxyProtos.QueryResponse response = responseBuilder.build();
-
-			synchronized (session) {
-				session.write(response);
-			}
 		}
 	}
 

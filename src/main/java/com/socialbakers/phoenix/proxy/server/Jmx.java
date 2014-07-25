@@ -3,22 +3,18 @@ package com.socialbakers.phoenix.proxy.server;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadPoolExecutor;
 
-import org.apache.mina.filter.executor.IoEventQueueThrottle;
-
 import com.socialbakers.phoenix.proxy.Configuration;
 
 public class Jmx implements JmxMBean {
 
 	private Configuration conf;
 	private Executor executor;
-	private IoEventQueueThrottle queueHandler;
 	private RequestHandler requestHandler;
 
-	public Jmx(Configuration conf, Executor executor, IoEventQueueThrottle queueHandler, RequestHandler requestHandler) {
+	public Jmx(Configuration conf, Executor executor, RequestHandler requestHandler) {
 		super();
 		this.conf = conf;
 		this.executor = executor;
-		this.queueHandler = queueHandler;
 		this.requestHandler = requestHandler;
 	}
 
@@ -90,7 +86,7 @@ public class Jmx implements JmxMBean {
 
 	@Override
 	public int getRequestsInQueue() {
-		return queueHandler.getCounter();
+		return requestHandler.getTaskCountInQueue();
 	}
 
 	@Override
