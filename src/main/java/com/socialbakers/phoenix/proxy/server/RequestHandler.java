@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.lang.reflect.Field;
 import java.sql.SQLException;
 import java.util.Comparator;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
@@ -12,6 +13,7 @@ import java.util.concurrent.FutureTask;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.RejectedExecutionHandler;
+import java.util.concurrent.RunnableFuture;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
@@ -40,12 +42,12 @@ public class RequestHandler extends IoHandlerAdapter {
 	private static PriorityRejectableTask getPRTaskFromRunnable(Runnable r) {
 		if (r instanceof PriorityRejectableTask) {
 			return (PriorityRejectableTask) r;
-		} else if (r instanceof FutureTask) {
-			try {
-				callableField.get(r);
-			} catch (Exception e) {
-				return null;
-			}
+			// } else if (callableField != null && r instanceof FutureTask) {
+			// try {
+			// callableField.get(r);
+			// } catch (Exception e) {
+			// return null;
+			// }
 		}
 		return null;
 	}
@@ -62,14 +64,21 @@ public class RequestHandler extends IoHandlerAdapter {
 	private ThreadPoolExecutor executor;
 	private PriorityBlockingQueue<Runnable> queue;
 
-	private static final Field callableField;
+	private static Field callableField;
 
 	static {
 		try {
 			callableField = FutureTask.class.getDeclaredField("callable");
 			callableField.setAccessible(true);
 		} catch (Exception e) {
-			throw new IllegalStateException(e);
+			try {
+				Field sync = FutureTask.class.getDeclaredField("sync");
+				sync.setAccessible(true);
+				callableField = sync.getType().getDeclaredField("callable");
+				callableField.setAccessible(true);
+			} catch (Exception e1) {
+				callableField = null;
+			}
 		}
 	}
 
@@ -115,6 +124,11 @@ public class RequestHandler extends IoHandlerAdapter {
 				if (t != null) {
 					LOGGER.error(t.getMessage(), t);
 				}
+			}
+
+			@Override
+			protected <T> RunnableFuture<T> newTaskFor(Callable<T> callable) {
+				return new RejectablePriorityFutureTask<T>(callable);
 			}
 
 		};
@@ -234,6 +248,29 @@ public class RequestHandler extends IoHandlerAdapter {
 
 	public synchronized void setRejectionsCounter(int rejectionsCounter) {
 		this.rejectionsCounter = rejectionsCounter;
+	}
+
+	private class RejectablePriorityFutureTask<T> extends FutureTask<T> implements PriorityRejectableTask {
+		private PriorityRejectableTask task;
+
+		public RejectablePriorityFutureTask(Callable<T> callable) {
+			super(callable);
+			if (callable instanceof PriorityRejectableTask) {
+				this.task = (PriorityRejectableTask) callable;
+			}
+		}
+
+		@Override
+		public int getPriority() {
+			return task != null ? task.getPriority() : 0;
+		}
+
+		@Override
+		public void reject() {
+			if (task != null) {
+				task.reject();
+			}
+		}
 	}
 
 	private class RequestTask implements Runnable, PriorityRejectableTask {
