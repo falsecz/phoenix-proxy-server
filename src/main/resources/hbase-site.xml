@@ -24,7 +24,7 @@
 <configuration>
   <property>
     <name>phoenix.query.threadPoolSize</name>
-    <value>512</value>
+    <value>128</value>
   </property>
   <property>
     <name>phoenix.query.queueSize</name>
